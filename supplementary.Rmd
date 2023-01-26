@@ -74,33 +74,16 @@ output:
 ---
 
 ```{r setup, include = FALSE}
-library("papaja")
+library(papaja)
 r_refs(file = "r-references.bib")
 
 library(tidyverse)
 library(scales)
-library(MetBrewer)
 library(patchwork)
 # library(viridis)
 library(brms)
 library(tidybayes)
-
-# h <- met.brewer(colorblind_palettes[8]) # "Hiroshige"
-#
-theme_set(
-  theme_minimal(base_size = 13) +
-    theme(
-      # panel.background = element_rect(fill = alpha(h[5], 0.33)),
-      # panel.border = element_rect(linewidth = 0.33),
-      # panel.grid = element_blank(),
-      # plot.background = element_rect(fill = alpha(h[5], 0.2)),
-      # strip.background = element_rect(fill = alpha(h[5], 0.67), linewidth = 0),
-      # strip.text = element_text(color = "black"),
-      legend.position = "bottom",
-      # panel.grid.major = element_blank(),
-      # panel.grid.minor = element_blank()
-    )
-)
+library(modelr)
 ```
 
 ```{r analysis-preferences}
@@ -113,7 +96,7 @@ knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
 # Load Data
 
 ```{r load-data}
-d <- readxl::read_excel("../data/APfor Modelling.xlsx") |>
+d <- readxl::read_excel("./data/APfor Modelling.xlsx") |>
   filter(Experimentteil != "nurfarbe") |>
   mutate(
     ID = as_factor(Subject),
