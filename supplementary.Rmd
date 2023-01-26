@@ -1,0 +1,956 @@
+---
+title             : "Supplementary material: Absolute Pitch and Sound-Color-Synesthesia"
+shorttitle        : "Supplementary material"
+
+author: 
+  - name          : "Beat Meier"
+    affiliation   : "1"
+    corresponding : yes    # Define only one corresponding author
+    address       : "Department of  Psychology, University of Bern, Fabrikstrasse 8, 3012 Bern, Switzerland"
+    email         : "beat.meier@unibe.ch"
+    role: 
+      - "Conceptualization"
+      - "Writing - Original Draft Preparation"
+      - "Writing - Review & Editing"
+  - name          : "Andrew W. Ellis" 
+    affiliation   : "1"
+    role:
+      - "Writing - Review & Editing"
+      - "Data analysis"
+
+  - name          : "Solange Glasser"
+    affiliation   : "2"
+    role:
+      - "Conceptualization"
+      - "Writing - Review & Editing"
+
+affiliation:
+  - id            : "1"
+    institution   : "Department of Psychology, University of Bern, Switzerland"
+  - id            : "2"
+    institution   : "University of Melbourne, Australia"
+
+authornote: |
+  \addORCIDlink{Andrew W. Ellis}{0000-0002-2788-936X}
+
+abstract: |
+  One or two sentences providing a **basic introduction** to the field,  comprehensible to a scientist in any discipline.
+  
+keywords          : "keywords"
+wordcount         : "X"
+
+bibliography      : "bibliography.bib"
+
+floatsintext      : yes
+linenumbers       : yes
+draft             : no
+mask              : no
+
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+
+header-includes:
+  - |
+    \makeatletter
+    \renewcommand{\paragraph}{\@startsection{paragraph}{4}{\parindent}%
+      {0\baselineskip \@plus 0.2ex \@minus 0.2ex}%
+      {-1em}%
+      {\normalfont\normalsize\bfseries\typesectitle}}
+    
+    \renewcommand{\subparagraph}[1]{\@startsection{subparagraph}{5}{1em}%
+      {0\baselineskip \@plus 0.2ex \@minus 0.2ex}%
+      {-\z@\relax}%
+      {\normalfont\normalsize\bfseries\itshape\hspace{\parindent}{#1}\textit{\addperi}}{\relax}}
+    \makeatother
+    
+
+csl               : "`r system.file('rmd', 'apa7.csl', package = 'papaja')`"
+documentclass     : "apa7"
+output:         
+    papaja::apa6_pdf:
+        keep_tex:  true
+    # papaja::apa6_docx
+---
+
+```{r setup, include = FALSE}
+library("papaja")
+r_refs(file = "r-references.bib")
+
+library(tidyverse)
+library(scales)
+library(MetBrewer)
+library(patchwork)
+# library(viridis)
+library(brms)
+library(tidybayes)
+
+# h <- met.brewer(colorblind_palettes[8]) # "Hiroshige"
+#
+theme_set(
+  theme_minimal(base_size = 13) +
+    theme(
+      # panel.background = element_rect(fill = alpha(h[5], 0.33)),
+      # panel.border = element_rect(linewidth = 0.33),
+      # panel.grid = element_blank(),
+      # plot.background = element_rect(fill = alpha(h[5], 0.2)),
+      # strip.background = element_rect(fill = alpha(h[5], 0.67), linewidth = 0),
+      # strip.text = element_text(color = "black"),
+      legend.position = "bottom",
+      # panel.grid.major = element_blank(),
+      # panel.grid.minor = element_blank()
+    )
+)
+```
+
+```{r analysis-preferences}
+# Seed for random number generation
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+```
+
+
+# Load Data
+
+```{r load-data}
+d <- readxl::read_excel("../data/APfor Modelling.xlsx") |>
+  filter(Experimentteil != "nurfarbe") |>
+  mutate(
+    ID = as_factor(Subject),
+    group3 = as_factor(Group),
+    syn = as_factor(Syn),
+    test = as_factor(Experimentteil),
+    time = as.ordered(as.numeric(test)),
+    oldnew = as_factor(oldnew),
+    item = as_factor(Item),
+    rating = ordered(response),
+    oldnew = fct_recode(oldnew, old = "alt", new = "new"),
+    oldnew = fct_relevel(oldnew, "new"),
+    triplet = ifelse(oldnew == "new", -1, 1),
+    syn = fct_recode(syn, syn = "1", nosyn = "0")
+  )
+
+d <- d |>
+  unite(col = group4, group3, syn) |>
+  transmute(
+    group4 = as_factor(group4),
+    group4 = fct_recode(group4,
+      control = "KG_nosyn",
+      relpitch = "RP_nosyn",
+      abspitch = "AP_nosyn",
+      syn = "AP_syn"
+    ),
+    group4 = fct_relevel(
+      group4, "control", "relpitch",
+      "abspitch", "syn"
+    )
+  ) |>
+  bind_cols(d) |>
+  mutate(
+    group3 = fct_recode(group3,
+      control = "KG",
+      relpitch = "RP",
+      abspitch = "AP"
+    ),
+    group3 = fct_relevel(
+      group3, "control", "relpitch",
+      "abspitch"
+    ),
+    group2 = as_factor(case_when(
+      group3 == "abspitch" | group3 == "relpitch" ~ "musician",
+      group3 == "control" ~ "control"
+    )),
+    group3alt = as_factor(case_when(
+      group4 == "abspitch" | group4 == "relpitch" ~ "musician",
+      group4 == "syn" ~ "syn",
+      group4 == "control" ~ "control"
+    )),
+    test = fct_recode(test,
+      colors = "nurfarbe2",
+      tones = "nurton",
+      combined = "beides"
+    ),
+    test = fct_relevel(
+      test, "colors", "tones", "combined"
+    )
+  ) |>
+  select(
+    ID, group2, group3, group3alt, group4, syn, test,
+    time, oldnew, triplet, item, response,
+    rating
+  )
+
+
+
+## remove subject 1305 (control) -> synaesthesia? ----
+
+d <- d |>
+  filter(!(ID %in% 10305)) |>
+  mutate(ID = droplevels(ID))
+```
+
+In this study, subjects in 3 groups (non-musician controls, musicians with relative pitch, musicians with absolute pitch) gave confidence judgments on previously learned or previously unseen (old/new) triplets of stimuli. Confidence ratings were given on a 5-point response scale (1-5). Subjects were tested in three conditions (colours, tones, and colours and tones combined) with both old and new stimuli, resulting in a $3 x 3 x 2$ mixed design.
+
+It was subsequently discovered that 7 of the musicians with absolute pitch were also synaesthetes; this subgroup was analyzed separately, as a $4 x 3 x 2$ design with the between factor group membership and the within factor experimental condition.
+
+In the original three groups, there were 19, 22 and 24 subjects, repsectively.
+
+```{r}
+d |>
+  group_by(group3) |>
+  summarise(n = n_distinct(ID))
+
+# d |>
+#   group_by(group3) %>%
+#   distinct(ID) %>%
+#   count()
+```
+
+
+Out of the $24$ subjects with absolute pitch, $7$ were synaesthetes.
+
+```{r}
+d |>
+  group_by(group4) |>
+  summarise(n = n_distinct(ID))
+```
+
+
+
+# Learning Score
+
+In this type of experiment, the traditional approach is to treat the ordinal response as a continuous variable, and to compute the mean response category for old and new items for each combination of test type/group, and then compute a learning score as the difference in mean response to old and new items. 
+
+However, treating an ordinal response as a continuous variable is associated with several problems [@liddellAnalyzingOrdinalData2018a]. While the categories have an ordering, but it is unknown what the _psychological distance_ between those categories is, and whether distances between categories are the same across subjects. An alternative approach is to use an ordered regression model, in which it is assumed that the observed variable $Y$ originates from the categorization of a latent continuous variable $\tilde{Y}$. There are $K$ thresholds $\tau_k$ , which partition $\tilde{Y}$ into $K+1$ observable, ordered categories of $Y$.
+
+
+# Exploratory Data Analysis
+
+```{r}
+se <- function(x) sd(x) / sqrt(length(x))
+funs <- list(mean = mean, sd = sd, se = se)
+```
+
+
+```{r}
+point_estimates <- d |>
+  group_by(ID, group4, test, oldnew) |>
+  summarise(mean = mean(response)) |>
+  spread(oldnew, mean) |>
+  mutate(score = old - new)
+
+
+point_estimates |>
+  ggplot(aes(x = test, y = score, color = group4)) +
+  geom_line(aes(group = ID)) +
+  geom_point() +
+  facet_wrap(~group4) +
+  scale_color_viridis_d(direction = 1, option = "C", end = .80) +
+  theme_tidybayes()
+```
+
+```{r}
+d %>%
+  group_by(ID, group4, test, oldnew) %>%
+  summarise(mean = mean(response)) %>%
+  ggplot(aes(x = test, y = mean, color = oldnew)) +
+  geom_line(aes(group = interaction(ID, oldnew))) +
+  geom_point() +
+  facet_wrap(~group4) +
+  scale_color_viridis_d(direction = 1, option = "C", end = .80) +
+  theme_tidybayes()
+```
+
+
+
+
+In the following, we compute the learning scores for each individual subject in each test condition as the the difference in mean response to old and new items, `mean(old) - mean(new)`. Positive learning scores thus indicate that the subject gave higher ratings to previously seen triplets than to unseen triplets. Higher scores are interpreted as greater being due to greater learning of the triplets; subjects are able to confidently state that they have previously seen old triplets, whilst being able to reject unseen triplets.
+
+All figures show mean learning scores in all three conditions, aggregated over subjects, with within-subjects confidence intervals [@moreyConfidenceIntervalsNormalized2008a].
+
+ 
+
+## Musicians vs controls
+
+
+```{r}
+sdtdata_2 <- d |>
+  group_by(ID, group2, test, oldnew) |>
+  summarise(mean = mean(response)) |>
+  pivot_wider(names_from = oldnew, values_from = mean) |>
+  mutate(score = old - new)
+
+sdtdata_2_agg <- sdtdata_2 |>
+  drop_na() |>
+  group_by(group2, test) |>
+  summarise(across(score, funs, .names = "{.fn}"))
+
+sdtdata_2_agg_within <- sdtdata_2 |>
+  Rmisc::summarySEwithin(
+    measurevar = "score",
+    betweenvars = "group2",
+    withinvars = "test",
+    idvar = "ID",
+    na.rm = FALSE,
+    conf.interval = 0.95
+  )
+
+sdtdata_2_agg_within <- sdtdata_2_agg_within |>
+  mutate(mean = pull(sdtdata_2_agg, mean))
+
+sdtdata_2_agg_within |>
+  ggplot(aes(x = test, y = mean, color = group2)) +
+  geom_line(aes(group = group2), linewidth = 1.5, linetype = "dashed") +
+  geom_point(size = 4) +
+  geom_errorbar(
+    aes(
+      ymin = mean - ci,
+      ymax = mean + ci
+    ),
+    width = 0.1, size = 1.5
+  ) +
+  scale_color_viridis_d(direction = -1, option = "C", end = .85) +
+  ylab("Learning score") +
+  xlab("Test") +
+  ylim(0, 3) +
+  guides(color = guide_legend(
+    title = "Group",
+    title.position = "top"
+  ))
+```
+
+
+
+## Absolute pitch, relative pitch and controls
+
+
+```{r}
+sdtdata_3 <- d |>
+  group_by(ID, group3, test, oldnew) |>
+  summarise(mean = mean(response)) |>
+  pivot_wider(names_from = oldnew, values_from = mean) |>
+  mutate(score = old - new)
+
+sdtdata_3_agg <- sdtdata_3 |>
+  drop_na() |>
+  group_by(group3, test) |>
+  summarise(across(score, funs,
+    .names = "{.fn}"
+  ))
+
+sdtdata_3_agg_within <- sdtdata_3 |>
+  Rmisc::summarySEwithin(
+    measurevar = "score",
+    betweenvars = "group3",
+    withinvars = "test",
+    idvar = "ID",
+    na.rm = FALSE,
+    conf.interval = 0.95
+  )
+
+sdtdata_3_agg_within <- sdtdata_3_agg_within |>
+  mutate(mean = pull(sdtdata_3_agg, mean))
+
+sdtdata_3_agg_within |>
+  ggplot(aes(x = test, y = mean, color = group3)) +
+  geom_line(aes(group = group3), linewidth = 1.5, linetype = "dashed") +
+  geom_point(size = 4) +
+  geom_errorbar(
+    aes(
+      ymin = mean - ci,
+      ymax = mean + ci
+    ),
+    width = 0.1, size = 1.5
+  ) +
+  scale_color_viridis_d(direction = -1, option = "C", end = .85) +
+  ylab("Learning score") +
+  xlab("Test") +
+  ylim(0, 3) +
+  guides(color = guide_legend(
+    title = "Group",
+    title.position = "top"
+  ))
+```
+
+
+## Synaesthetes, absolute pitch, relative pitch and controls
+
+```{r}
+sdtdata_4 <- d |>
+  group_by(ID, group4, test, oldnew) |>
+  summarise(mean = mean(response)) |>
+  pivot_wider(names_from = oldnew, values_from = mean) |>
+  mutate(score = old - new)
+
+sdtdata_4_agg <- sdtdata_4 |>
+  drop_na() |>
+  group_by(group4, test) |>
+  summarise(across(score, funs,
+    .names = "{.fn}"
+  ))
+
+sdtdata_4_agg_within <- sdtdata_4 |>
+  Rmisc::summarySEwithin(
+    measurevar = "score",
+    betweenvars = "group4",
+    withinvars = "test",
+    idvar = "ID",
+    na.rm = FALSE,
+    conf.interval = 0.95
+  )
+
+sdtdata_4_agg_within <- sdtdata_4_agg_within |>
+  mutate(mean = pull(sdtdata_4_agg, mean))
+
+sdtdata_4_agg_within |>
+  ggplot(aes(x = test, y = mean, color = group4)) +
+  geom_line(aes(group = group4), linewidth = 1.5, linetype = "dashed") +
+  geom_point(size = 4) +
+  geom_errorbar(
+    aes(
+      ymin = mean - ci,
+      ymax = mean + ci
+    ),
+    width = 0.1, size = 1.5
+  ) +
+  scale_color_viridis_d(direction = -1, option = "C", end = .85) +
+  ylab("Learning score") +
+  xlab("Test") +
+  ylim(0, 3) +
+  guides(color = guide_legend(
+    title = "Group",
+    title.position = "top"
+  ))
+```
+
+## Musicians, synaesthetes, controls
+
+```{r}
+sdtdata_3alt <- d |>
+  group_by(ID, group3alt, test, oldnew) |>
+  summarise(mean = mean(response)) |>
+  pivot_wider(names_from = oldnew, values_from = mean) |>
+  mutate(score = old - new)
+
+sdtdata_3alt_agg <- sdtdata_3alt |>
+  drop_na() |>
+  group_by(group3alt, test) |>
+  summarise(across(score, funs,
+    .names = "{.fn}"
+  ))
+
+sdtdata_3alt_agg_within <- sdtdata_3alt |>
+  Rmisc::summarySEwithin(
+    measurevar = "score",
+    betweenvars = "group3alt",
+    withinvars = "test",
+    idvar = "ID",
+    na.rm = FALSE,
+    conf.interval = 0.95
+  )
+
+sdtdata_3alt_agg_within <- sdtdata_3alt_agg_within |>
+  mutate(mean = pull(sdtdata_3alt_agg, mean))
+
+sdtdata_3alt_agg_within |>
+  ggplot(aes(x = test, y = mean, color = group3alt)) +
+  geom_line(aes(group = group3alt), size = 1.5, linetype = "dashed") +
+  geom_point(size = 4) +
+  geom_errorbar(
+    aes(
+      ymin = mean - ci,
+      ymax = mean + ci
+    ),
+    width = 0.1, size = 1.5
+  ) +
+  scale_color_viridis_d(direction = -1, option = "C", end = .85) +
+  ylab("Learning score") +
+  xlab("Test") +
+  ylim(0, 3) +
+  guides(color = guide_legend(
+    title = "Group",
+    title.position = "top"
+  ))
+```
+
+
+
+## Individial responses
+
+
+```{r}
+d |>
+  filter(group4 == "syn") |>
+  mutate(ID = fct_drop(ID)) |>
+  ggplot(aes(x = oldnew, fill = rating)) +
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(
+    name = "Rating:",
+    type = "div", palette = "Spectral", direction = -1
+  ) +
+
+  # scale_x_continuous(breaks = 1:5) +
+  facet_wrap(~ID) +
+  ylab("Proportion") +
+  ggtitle("Synaesthetes")
+```
+
+
+```r
+d |>
+  filter(group4 == "syn") |>
+  mutate(ID = fct_drop(ID)) |>
+  ggplot(aes(x = rating, fill = oldnew)) +
+  geom_bar(position = position_dodge2(preserve = "single")) +
+  # scale_x_continuous(breaks = 1:5) +
+  facet_wrap(~ID) +
+  ggtitle("Synaesthetes")
+```
+
+
+```{r}
+d |>
+  filter(group4 == "abspitch") |>
+  mutate(ID = fct_drop(ID)) |>
+  ggplot(aes(x = oldnew, fill = rating)) +
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  scale_y_continuous(labels = scales::percent) +
+  # scale_x_continuous(breaks = 1:5) +
+  facet_wrap(~ID) +
+  ylab("Proportion") +
+  ggtitle("Absolute Pitch")
+```
+
+```{r}
+# d |>
+#   filter(group4 == "relpitch") |>
+#   mutate(ID = fct_drop(ID)) |>
+#   ggplot(aes(x = rating, fill = oldnew)) +
+#   geom_bar(position = position_dodge2(preserve = "single")) +
+#   # scale_x_continuous(breaks = 1:5) +
+#   facet_wrap(~ID) +
+#   ggtitle("Relative Pitch")
+
+d |>
+  filter(group4 == "relpitch") |>
+  mutate(ID = fct_drop(ID)) |>
+  ggplot(aes(x = oldnew, fill = rating)) +
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  scale_y_continuous(labels = scales::percent) +
+  # scale_x_continuous(breaks = 1:5) +
+  facet_wrap(~ID) +
+  ylab("Proportion") +
+  ggtitle("Relative Pitch")
+```
+
+
+
+```{r}
+d |>
+  filter(group4 == "control") |>
+  mutate(ID = fct_drop(ID)) |>
+  ggplot(aes(x = oldnew, fill = rating)) +
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~ID) +
+  ylab("Proportion") +
+  ggtitle("Control")
+```
+
+
+# Ordinal regression models
+
+## Theory 
+
+- Although ordinal data are not metric, they are often analyzed using methods that assume metric responses. This practice may lead to serious errors in inference (Liddell & Kruschke, 2018). 
+- Ordinal variables:  categories have an ordering, but it is unknown 
+  + what the __psychological distance__ between them is
+  + whether distances between categories are the same across participants
+
+
+### Ordinal regression
+- Use the framework of signal detection (unequal variance SDT or logistic model with heteroscedastic error)
+- Work with raw responses, instead of summarizing data
+- Quantify uncertainty at all levels
+- Allows multilevel model (shrinkage could be especially important due to low number of subjects)
+
+
+
+### Unequal Variance (logistic) SDT Model
+- Item is either old or new
+- Subjects do not provide binary old or new responses, but instead give their responses on a 5-point rating scale
+- Subjects rate their confidence in whether the item was old or new (actually, how frequently the item was presented)
+- Subjects set a number of criteria for the ratings, such that greater evidence is required for 5-responses, than 4-responses, for example.
+
+
+$$ P(Y \leq k | X) = F\left(  \frac{ c_k - dX} { \sigma_X }  \right)$$ 
+
+for $k=1$ to $K-1$, where 
+
+- $K$ is the number of response categories
+- $Y$ is a response rating, taking on the values $k=1$ to $K$
+- $F$ is a cumulative distribution function
+- $c_k$ are response criteria
+- $\sigma_X$ is the standard deviation of the latent distribution
+
+```{r echo=FALSE}
+tibble(x = seq(from = -4, to = 8, by = .1)) |>
+  expand(x, nesting(
+    mean = c(0, 1.5),
+    sd = c(1, 1.5)
+  )) |>
+  mutate(
+    density = dnorm(x, mean, sd),
+    group = rep(c("new", "old"), times = n() / 2)
+  ) |>
+  ggplot(aes(
+    x = x, ymin = 0, ymax = density,
+    group = group, fill = group
+  )) +
+  geom_ribbon(size = 0, alpha = 0.4) +
+  geom_vline(xintercept = c(-1.8, -0.3, 1.0, 2.6), linetype = "dashed") +
+  scale_fill_viridis_d(
+    option = "B", direction = -1,
+    begin = 1 / 3, end = 2 / 3
+  ) +
+  scale_y_continuous(NULL, breaks = NULL) +
+  # coord_cartesian(xlim = -4:6) +
+  xlab("") +
+  theme_bw(base_size = 16) +
+  theme(
+    panel.grid = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  )
+```
+
+
+## BRMS Models
+
+```{r}
+tibble(rating = 1:5) |>
+  mutate(proportion = 1 / 5) |>
+  mutate(cumulative_proportion = cumsum(proportion)) |>
+  mutate(
+    right_hand_threshold = qnorm(cumulative_proportion),
+    right_hand_threshold_logit = qlogis(cumulative_proportion)
+  )
+```
+```{r priors-inits}
+priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4) +
+  prior(normal(0, 1), class = b) +
+  prior(normal(0, 1), class = b, dpar = "disc") +
+  prior(student_t(3, 0, 1), class = sd, group = ID) +
+  # prior(student_t(3, 0, 1), class = sd, group = item) +
+  prior(lkj(2), class = cor, group = ID)
+# prior(lkj(2), class = cor, group = item)
+
+inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
+```
+
+### 2 groups
+```{r}
+formula <- bf(rating ~ group2 * oldnew * test + (1 + oldnew | ID)) +
+  lf(disc ~ 0 + group2 * oldnew + (1 + oldnew | ID), cmc = FALSE)
+
+# priors <- c(prior(normal(0, 1.5), class = Intercept))
+
+
+fit_2_groups <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  # save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_2_groups"),
+  save_model = "stancode/fit_2_groups.stan"
+) |>
+  add_criterion("loo")
+wwwww```
+
+
+### 3 Groups
+```{r fit-3-groups}
+formula <- bf(rating ~ group3 * oldnew * test + (1 + oldnew | ID)) +
+  lf(disc ~ 0 + group3 * oldnew + (1 + oldnew | ID), cmc = FALSE)
+
+fit_3_groups <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  # save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_3_groups"),
+  save_model = "stancode/fit_3_groups.stan"
+) |>
+  add_criterion("loo")
+```
+
+### 4 Groups
+
+```{r}
+p <- get_prior(formula, family = cumulative(), data = d)
+# p2 <- validate_prior(priors, formula, data = d, family = cumulative())
+```
+
+
+```{r}
+priors |>
+  parse_dist(prior) |>
+  filter(class == "Intercept") |>
+  ggplot(aes(y = coef, xdist = .dist, args = .args)) +
+  stat_halfeye() +
+  labs(
+    title = "stat_halfeye()",
+    subtitle = "with brms::prior() and ggdist::parse_dist() to visualize priors",
+    x = NULL
+  )
+```
+
+
+```{r}
+# formula <- bf(rating | thres(gr = group4) ~ group4 * oldnew * test +
+#   (1 + oldnew | gr(ID, by = group4))) +
+#   lf(disc ~ 0 + group4 * oldnew + (1 + oldnew | ID), cmc = FALSE)
+
+# formula <- bf(rating | thres(gr = test) ~ group4 * oldnew * test +
+# (1 + oldnew | ID)) +
+# lf(disc ~ 0 + group4 * oldnew * test +
+#   (1 + oldnew | ID), cmc = FALSE)
+
+formula <- bf(rating ~ group4 * oldnew * test +
+  (1 + oldnew | ID)) +
+  lf(disc ~ 0 + group4 * oldnew * test +
+    (1 + oldnew | ID), cmc = FALSE)
+
+fit_4_groups <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  # save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_4_groups"),
+  save_model = here::here("stancode/fit_4_groups.stan")
+) |>
+  add_criterion("loo")
+```
+
+
+
+```{r, eval=FALSE}
+simulated_conditions <- tribble(
+  ~title, ~newdata,
+  "A = 0, I = 0, C = 0", tibble(action = 0, intention = 0, contact = 0),
+  "A = 0, I = 1, C = 0", tibble(action = 0, intention = 1, contact = 0),
+  "A = 1, I = 0, C = 0", tibble(action = 1, intention = 0, contact = 0),
+  "A = 1, I = 1, C = 0", tibble(action = 1, intention = 1, contact = 0),
+  "A = 0, I = 0, C = 1", tibble(action = 0, intention = 0, contact = 1),
+  "A = 0, I = 1, C = 1", tibble(action = 0, intention = 1, contact = 1)
+) |>
+  mutate(pred_plot = map2(newdata, title, ~ {
+    model_aci |>
+      add_predicted_draws(newdata = .x) |>
+      ungroup() |>
+      count(.prediction) |>
+      mutate(
+        prop = n / sum(n),
+        prop_nice = label_percent(accuracy = 0.1)(prop)
+      ) |>
+      ggplot(aes(x = .prediction, y = n)) +
+      geom_col(aes(fill = .prediction)) +
+      geom_text(aes(y = 50, label = prop_nice),
+        color = "white", size = 2.5,
+        angle = 90, hjust = 0
+      ) +
+      scale_y_continuous(labels = label_comma()) +
+      scale_fill_viridis_d(option = "rocket", end = 0.85, guide = "none") +
+      labs(
+        x = "Response", y = "Count",
+        title = .y
+      ) +
+      theme(plot.title = element_text(size = rel(1), hjust = 0.5))
+  }))
+
+wrap_plots(simulated_conditions$pred_plot, nrow = 2, byrow = FALSE)
+```
+
+
+```{r}
+fit_4_groups |>
+  gather_draws(`b_Intercept.*`, regex = TRUE) |>
+  ggplot(aes(x = .value, y = .variable)) +
+  stat_halfeye()
+```
+```{r}
+fit_4_groups |>
+  gather_draws(`b_disc.*`, regex = TRUE) |>
+  ggplot(aes(x = .value, y = .variable)) +
+  stat_halfeye()
+```
+
+
+
+### 3 Alternative Groups
+```{r}
+formula <- bf(rating ~ group3alt * oldnew * test + (1 + oldnew | ID)) +
+  lf(disc ~ 0 + group3alt * oldnew + (1 + oldnew | ID), cmc = FALSE)
+
+fit_3alt_groups <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  # save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_3alt_groups"),
+  save_model = "stancode/fit_3alt_groups.stan"
+) |>
+  add_criterion("loo")
+```
+
+## Model comparison
+
+```{r}
+loo_compare(
+  fit_2_groups,
+  fit_3_groups,
+  fit_4_groups,
+  fit_3alt_groups
+)
+```
+
+
+## Conditional effects
+
+```{r}
+conditions <- make_conditions(fit_4_groups, c("test", "group4"))
+plot(
+  conditional_effects(fit_4_groups,
+    effects = "oldnew",
+    conditions = conditions,
+    re_formula = ~ID,
+    categorical = TRUE,
+    method = "fitted"
+  ),
+  ncol = 4,
+  theme = theme_tidybayes()
+)
+```
+
+```{r}
+conditions <- make_conditions(fit_4_groups, c("test", "group4"))
+plot(
+  conditional_effects(fit_4_groups,
+    effects = "oldnew",
+    conditions = conditions,
+    re_formula = ~ (1 + oldnew | ID),
+    # allow_new_levels = TRUE,
+    # sample_new_levels = "gaussian",
+    categorical = TRUE
+    # method = "fitted"
+  ),
+  ncol = 4,
+  theme = theme_tidybayes()
+)
+```
+
+
+```{r}
+fitted_4_linpred <- d |>
+  modelr::data_grid(group4, test, oldnew) |>
+  add_linpred_draws(fit_4_groups,
+    dpar = TRUE,
+    transform = TRUE,
+    re_formula = ~ID,
+    ndraws = 100
+  )
+
+fitted_4_epred <- d |>
+  modelr::data_grid(group4, test, oldnew) |>
+  add_epred_draws(fit_4_groups,
+    dpar = TRUE,
+    re_formula = ~ID,
+    ndraws = 100
+  )
+```
+
+
+
+
+```{r}
+fitted_4_epred |>
+  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
+  stat_pointinterval(position = position_dodge(width = .4)) +
+  # geom_line(aes(group = oldnew)) +
+  facet_grid(test ~ group4) +
+  scale_size_continuous(guide = FALSE) +
+  # scale_color_brewer(palette = "RdYlBu")
+  scale_color_viridis_d()
+```
+
+```{r}
+fitted_4_linpred |>
+  ggplot(aes(x = oldnew, y = mu)) +
+  geom_hline(yintercept = 0, linetype = "dotted", alpha = 0.4) +
+  stat_pointinterval(position = position_dodge(width = .4), color = "steelblue4") +
+  facet_grid(test ~ group4) +
+  scale_size_continuous(guide = FALSE) +
+  scale_color_viridis_d()
+```
+
+
+## Diagnostics
+
+```{r}
+loo_fit_4 <- loo(fit_4_groups)
+
+loo::pareto_k_table(loo_fit_4) |> knitr::kable()
+plot(loo_fit_4)
+```
+
+## Problematic data points
+```{r echo=FALSE}
+# data[pareto_k_ids(loo_fit_1), ]
+
+d |>
+  filter(row_number() %in% loo::pareto_k_ids(loo_fit_4)) |>
+  select(ID, group2, group4, test, item, oldnew, response) |>
+  knitr::kable()
+```
+
+
+## PP checks
+
+
+```{r}
+pp_check(fit_4_groups,
+  type = "bars_grouped", group = "group4",
+  ndraws = 500, size = 1 / 2, fatten = 3 / 2
+) +
+  # ylim(0, 80) +
+  labs(
+    title = "fit_4_groups",
+    subtitle = "The thresholds can now vary across items."
+  )
+```
+# Discussion
+
+
+
+\newpage
+
+# References
+
+::: {#refs custom-style="Bibliography"}
+:::
