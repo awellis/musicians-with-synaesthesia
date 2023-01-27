@@ -39,7 +39,7 @@ predictor variables.
    b) no difference between abs and rel pitch
 
 3) response categories -> different behaviour (how often did you think that this
-   triplet occured previsously?)
+   triplet occurred previsously?)
 
 4) a) dissociation: absolute pitch -> better memory b) memory for colors: no
    difference between abs pitch and synaesthesia

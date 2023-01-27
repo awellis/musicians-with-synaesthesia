@@ -143,11 +143,17 @@ d <- d |>
       group3 == "abspitch" | group3 == "relpitch" ~ "musician",
       group3 == "control" ~ "control"
     )),
+    group2 = fct_relevel(
+      group2, "control", "musician"
+    ),
     group3alt = as_factor(case_when(
       group4 == "abspitch" | group4 == "relpitch" ~ "musician",
       group4 == "syn" ~ "syn",
       group4 == "control" ~ "control"
     )),
+    group3alt = fct_relevel(
+      group3alt, "control", "musician", "syn"
+    ),
     test = fct_recode(test,
       colors = "nurfarbe2",
       tones = "nurton",
@@ -176,7 +182,7 @@ In this study, subjects in 3 groups (non-musician controls, musicians with relat
 
 It was subsequently discovered that 7 of the musicians with absolute pitch were also synaesthetes; this subgroup was analyzed separately, as a $4 x 3 x 2$ design with the between factor group membership and the within factor experimental condition.
 
-In the original three groups, there were 19, 22 and 24 subjects, repsectively.
+In the original three groups, there were 19, 22 and 24 subjects, respectively.
 
 ```{r}
 d |>
@@ -204,7 +210,26 @@ d |>
 
 In this type of experiment, the traditional approach is to treat the ordinal response as a continuous variable, and to compute the mean response category for old and new items for each combination of test type/group, and then compute a learning score as the difference in mean response to old and new items. 
 
+
 However, treating an ordinal response as a continuous variable is associated with several problems [@liddellAnalyzingOrdinalData2018a]. While the categories have an ordering, but it is unknown what the _psychological distance_ between those categories is, and whether distances between categories are the same across subjects. An alternative approach is to use an ordered regression model, in which it is assumed that the observed variable $Y$ originates from the categorization of a latent continuous variable $\tilde{Y}$. There are $K$ thresholds $\tau_k$ , which partition $\tilde{Y}$ into $K+1$ observable, ordered categories of $Y$.
+
+# Main points
+
+1) Musicians (with both relative pitch and absolute pitch) are better at
+  learning triplets than non-musicians (controls).
+
+2) There is no difference between absolute pitch and relative pitch. Having
+   absolute pitch confers no advantage over relative pitch.
+
+3) Any advantage in the recognition task is due to synaesthesia.
+
+4) Absolute pitch confers an advantage in associative learning (color-tone),
+   compared to relative pitch.
+
+5) Dissociation: There is no difference between abs pitch and synaesthesia in the colour memory task.
+
+6) Memory of colour is very accurate (but it is not synaesthesia that
+leads to very good color reproducibility).
 
 
 # Exploratory Data Analysis
@@ -302,7 +327,7 @@ sdtdata_2_agg_within |>
   ))
 ```
 
-
+Musicians, consisting of the groups with relative and absolute pitch (also containing the synaesthets) are clearly better at all three recognition task than controls. What is also noticeable is that musicians perform better in the tasks involving tones, whereas controls need both tones and colours combined to perform better.
 
 ## Absolute pitch, relative pitch and controls
 
@@ -468,10 +493,9 @@ d |>
   ggplot(aes(x = oldnew, fill = rating)) +
   geom_bar(position = position_fill(reverse = TRUE)) +
   scale_y_continuous(labels = scales::percent) +
-  scale_fill_brewer(
-    name = "Rating:",
-    type = "div", palette = "Spectral", direction = -1
-  ) +
+  # scale_fill_brewer(
+  # name = "Rating:",
+  # type = "div", palette = "Spectral", direction = -1) +
 
   # scale_x_continuous(breaks = 1:5) +
   facet_wrap(~ID) +
@@ -608,9 +632,11 @@ tibble(x = seq(from = -4, to = 8, by = .1)) |>
   )
 ```
 
+The idea is that each individual sets thresholds on the latent scale (depending on the type of the test). We allow the variance of the internal representation to differ between old and new items.
 
 ## BRMS Models
 
+Set initial values for the thresholds, assuming initially that the thresholds are evenly distributed, i.e. each response category has the same probability of being chosen.
 ```{r}
 tibble(rating = 1:5) |>
   mutate(proportion = 1 / 5) |>
@@ -620,7 +646,23 @@ tibble(rating = 1:5) |>
     right_hand_threshold_logit = qlogis(cumulative_proportion)
   )
 ```
-```{r priors-inits}
+```r priors-inits
+# priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
+#   prior(normal(-0.405, 1), class = Intercept, coef = 2) +
+#   prior(normal(0.405, 1), class = Intercept, coef = 3) +
+#   prior(normal(1.39, 1), class = Intercept, coef = 4) +
+#   prior(normal(0, 1), class = b) +
+#   prior(normal(0, 1), class = b, dpar = "disc") +
+#   prior(student_t(3, 0, 1), class = sd, group = ID) +
+#   # prior(student_t(3, 0, 1), class = sd, group = item) +
+#   prior(lkj(2), class = cor, group = ID)
+# # prior(lkj(2), class = cor, group = item)
+
+# inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
+```
+
+### 2 groups
+```{r}
 priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
   prior(normal(-0.405, 1), class = Intercept, coef = 2) +
   prior(normal(0.405, 1), class = Intercept, coef = 3) +
@@ -628,34 +670,87 @@ priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
   prior(normal(0, 1), class = b) +
   prior(normal(0, 1), class = b, dpar = "disc") +
   prior(student_t(3, 0, 1), class = sd, group = ID) +
-  # prior(student_t(3, 0, 1), class = sd, group = item) +
   prior(lkj(2), class = cor, group = ID)
-# prior(lkj(2), class = cor, group = item)
 
 inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
-```
 
-### 2 groups
-```{r}
-formula <- bf(rating ~ group2 * oldnew * test + (1 + oldnew | ID)) +
-  lf(disc ~ 0 + group2 * oldnew + (1 + oldnew | ID), cmc = FALSE)
-
-# priors <- c(prior(normal(0, 1.5), class = Intercept))
-
+formula <- bf(rating ~ group2 * oldnew * test +
+  (1 + oldnew | ID)) +
+  lf(disc ~ 0 + oldnew * test +
+    (1 + oldnew | ID), cmc = FALSE)
 
 fit_2_groups <- brm(formula,
   family = cumulative("logit"),
   data = d,
   prior = priors,
   init = rep(list(inits), 4),
-  # save_warmup = TRUE,
+  save_warmup = TRUE,
   chains = 4, iter = 2000, cores = 4,
   backend = "cmdstanr",
   file = here::here("models/fit_2_groups"),
   save_model = "stancode/fit_2_groups.stan"
 ) |>
   add_criterion("loo")
-wwwww```
+```
+
+
+
+```{r}
+priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4) +
+  prior(normal(0, 1), class = b) +
+  prior(normal(0, 1), class = b, dpar = "disc") +
+  prior(student_t(3, 0, 1), class = sd, group = ID) +
+  prior(lkj(2), class = cor, group = ID) +
+  prior(student_t(3, 0, 1), class = sd, group = item)
+
+
+inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
+
+formula <- bf(rating ~ group2 * oldnew * test +
+  (1 + oldnew | ID) + (1 | item)) +
+  lf(disc ~ 0 + oldnew * test +
+    (1 + oldnew | ID) + (1 | item), cmc = FALSE)
+
+fit_2_groups_alt <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_2_groups_alt"),
+  save_model = "stancode/fit_2_groups_alt.stan"
+) |>
+  add_criterion("loo")
+```
+
+
+
+```{r}
+int_only_samples <- as_draws_df(fit_2_groups_alt, inc_warmup = TRUE) |>
+  pivot_longer(starts_with("b_Intercept"))
+head(int_only_samples, 6)
+## # A tibble: 6 × 8
+##    disc lprior    lp__ .chain .iteration .draw name             value
+##   <dbl>  <dbl>   <dbl>  <int>      <int> <int> <chr>            <dbl>
+## 1     1  -10.3 -19252.      1          1     1 b_Intercept[1] -2.22
+## 2     1  -10.3 -19252.      1          1     1 b_Intercept[2] -1.48
+## 3     1  -10.3 -19252.      1          1     1 b_Intercept[3] -0.756
+## 4     1  -10.3 -19252.      1          1     1 b_Intercept[4]  0.0863
+## 5     1  -10.3 -19252.      1          1     1 b_Intercept[5]  0.889
+## 6     1  -10.3 -19252.      1          1     1 b_Intercept[6]  1.42
+
+int_only_samples |>
+  filter(.iteration < 100) |>
+  ggplot(aes(x = .iteration, y = value, color = factor(.chain))) +
+  geom_line(size = 0.5) +
+  scale_color_viridis_d(option = "rocket", end = 0.85) +
+  facet_wrap(vars(name), scales = "free_y")
+```
 
 
 ### 3 Groups
@@ -728,7 +823,77 @@ fit_4_groups <- brm(formula,
   add_criterion("loo")
 ```
 
+```{r}
+# formula <- bf(rating | thres(gr = group4) ~ group4 * oldnew * test +
+#   (1 + oldnew | gr(ID, by = group4))) +
+#   lf(disc ~ 0 + group4 * oldnew + (1 + oldnew | ID), cmc = FALSE)
 
+# formula <- bf(rating | thres(gr = test) ~ group4 * oldnew * test +
+# (1 + oldnew | ID)) +
+# lf(disc ~ 0 + group4 * oldnew * test +
+#   (1 + oldnew | ID), cmc = FALSE)
+
+formula <- bf(rating ~ group4 * oldnew * test +
+  (1 + oldnew | ID)) +
+  lf(disc ~ 0 + group4 * test +
+    (1 | ID), cmc = FALSE)
+
+fit_4_groups_2 <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  # save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_4_groups_2"),
+  save_model = here::here("stancode/fit_4_groups_2.stan")
+) |>
+  add_criterion("loo")
+```
+
+
+
+```{r}
+priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1, group = colors) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2, group = colors) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3, group = colors) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4, group = colors) +
+  prior(normal(-1.39, 1), class = Intercept, coef = 1, group = tones) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2, group = tones) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3, group = tones) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4, group = tones) +
+  prior(normal(-1.39, 1), class = Intercept, coef = 1, group = combined) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2, group = combined) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3, group = combined) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4, group = combined) +
+  prior(normal(0, 1), class = b) +
+  prior(normal(0, 1), class = b, dpar = "disc") +
+  prior(student_t(3, 0, 1), class = sd, group = ID) +
+  # prior(student_t(3, 0, 1), class = sd, group = item) +
+  prior(lkj(2), class = cor, group = ID)
+# prior(lkj(2), class = cor, group = item)
+
+inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
+
+formula <- bf(rating | thres(gr = test) ~ group4 * oldnew * test +
+  (1 + oldnew | ID)) +
+  lf(disc ~ 0 + group4 * test +
+    (1 | ID), cmc = FALSE)
+
+fit_4_groups_3 <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  # save_warmup = TRUE,
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_4_groups_3"),
+  save_model = here::here("stancode/fit_4_groups_3.stan")
+) |>
+  add_criterion("loo")
+```
 
 ```{r, eval=FALSE}
 simulated_conditions <- tribble(
@@ -807,9 +972,11 @@ fit_3alt_groups <- brm(formula,
 ```{r}
 loo_compare(
   fit_2_groups,
-  fit_3_groups,
+  # fit_3_groups,
   fit_4_groups,
-  fit_3alt_groups
+  fit_4_groups_2,
+  fit_4_groups_3
+  # fit_3alt_groups
 )
 ```
 
