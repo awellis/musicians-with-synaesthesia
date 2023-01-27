@@ -55,3 +55,9 @@ rsconnect/
 musicians-with-synaesthesia.code-workspace
 .vscode/settings.json
 .vscode/state.json
+
+
+# Stan models
+
+*.rds
+*.stan
