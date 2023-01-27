@@ -53,3 +53,5 @@ rsconnect/
 
 # VSCode workspace
 musicians-with-synaesthesia.code-workspace
+.vscode/settings.json
+.vscode/state.json
