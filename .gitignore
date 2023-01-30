@@ -59,5 +59,4 @@ musicians-with-synaesthesia.code-workspace
 
 # Stan models
 
-*.rds
 *.stan
