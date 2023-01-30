@@ -991,53 +991,85 @@ plot(
 epred_2_groups <- d |>
   data_grid(group2, test, oldnew) |>
   add_epred_draws(fit_2_groups,
-    dpar = TRUE,
-    re_formula = ~ID,
-    ndraws = 500
-  )
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~ID,
+                  ndraws = 500)
 
 epred_3_groups <- d |>
   data_grid(group3, test, oldnew) |>
   add_epred_draws(fit_3_groups,
-    dpar = TRUE,
-    re_formula = ~ID,
-    ndraws = 500
-  )
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~ID,
+                  ndraws = 500)
 
 epred_3_groups_alt <- d |>
   data_grid(group3alt, test, oldnew) |>
   add_epred_draws(fit_3_groups_alt,
-    dpar = TRUE,
-    re_formula = ~ID,
-    ndraws = 500
-  )
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~ID,
+                  ndraws = 500)
 
 epred_4_groups <- d |>
   data_grid(group4, test, oldnew) |>
   add_epred_draws(fit_4_groups,
-    dpar = TRUE,
-    re_formula = ~ID,
-    ndraws = 500
-  )
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~ID,
+                  ndraws = 500)
+```
+
+
+```{r}
+library(RColorBrewer)
 ```
 
 
 ```{r}
 epred_2_groups |>
-  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
+  ggplot(aes(x = oldnew, y = .epred, color = rating)) +
   stat_pointinterval(position = position_dodge(width = .4)) +
-  # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group2) +
   scale_size_continuous(guide = FALSE) +
   scale_y_continuous(limits = c(0, 1)) +
   # scale_color_brewer(palette = "RdYlBu")
-  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  # scale_size_continuous(guide = "none") +
+  scale_color_manual(values = brewer.pal(6, "Blues")[-c(1)]) +
+  # scale_color_viridis_d(begin = 0.0, end = 0.8) +
   theme_apa()
 ```
 
 ```{r}
+group2_plot <- epred_2_groups |> 
+  ggplot(aes(x = .epred, y = rating)) +
+  coord_cartesian(expand = FALSE) +
+  facet_grid(test + group2 ~ oldnew, switch = "x", labeller = label_value) +
+  theme_classic() +
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  ggtitle("P(rating | item, test, group)") +
+  xlab("Predicted score")
+```
+
+
+```{r}
+group2_plot +
+   stat_summary(fun = median, geom = "bar", fill = "gray65", width = 1, color = "white") +
+  stat_pointinterval()
+```
+
+```{r}
+group2_plot +
+  stat_ccdfinterval() +
+  expand_limits(x = 0) #ensure bars go to 0
+```
+
+
+
+```{r}
 epred_3_groups |>
-  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
+  ggplot(aes(x = rating, y = .epred, color = oldnew)) +
   stat_pointinterval(position = position_dodge(width = .4)) +
   # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group3) +
@@ -1064,7 +1096,7 @@ epred_3_groups_alt |>
 
 ```{r}
 epred_4_groups |>
-  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
+  ggplot(aes(x = rating, y = .epred, color = oldnew)) +
   stat_pointinterval(position = position_dodge(width = .4)) +
   # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group4) +
@@ -1075,20 +1107,36 @@ epred_4_groups |>
   theme_apa()
 ```
 
+```{r}
+sdtdata_4_agg_within |>
+  ggplot(aes(x = test, y = mean, color = group4)) +
+  geom_line(aes(group = group4), linewidth = 1.5, linetype = "dashed") +
+  geom_point(size = 4) +
+  geom_errorbar(
+    aes(
+      ymin = mean - ci,
+      ymax = mean + ci
+    ),
+    width = 0.1, linewidth = 1.5
+  ) +
+  scale_color_viridis_d(direction = -1, option = "C", end = .85) +
+  ylab("Learning score") +
+  xlab("Test") +
+  ylim(0, 3) +
+  guides(color = guide_legend(
+    title = "Group",
+    title.position = "top"
+  ))
+```
+
 
 ```{r}
-posterior_expectations <- d |>
-  data_grid(group4, test, oldnew) |>
-  add_epred_draws(fit_4_groups,
-    dpar = TRUE,
-    re_formula = ~ID,
-    ndraws = 500
-  ) |> 
-  mutate(product = as.double(.category) * .epred) |> 
+posterior_expectations <- epred_4_groups |> 
+  mutate(product = as.double(rating) * .epred) |> 
   # group and convert to the sum-score metric
   group_by(group4, test, oldnew, .draw) |> 
-  summarise(item_mean = sum(product)) |> 
-  pivot_wider(names_from = oldnew, values_from = item_mean) |> 
+  summarise(mean_rating = sum(product)) |> 
+  pivot_wider(names_from = oldnew, values_from = mean_rating) |> 
   mutate(score = old - new)
 ```
 
@@ -1099,8 +1147,15 @@ posterior_expectations |>
   # summarize
   group_by(group4, test) |> 
   mean_qi(score) |> 
-  ggplot(aes(x = test, y = score, color = group4)) +
-  stat_halfeye()
+  ggplot(aes(y = score, x = test, color = group4, ymin = .lower, ymax = .upper)) +
+  geom_line(aes(group = group4), linewidth = 1.5, linetype = "dashed") +
+  geom_pointinterval() +
+  scale_color_viridis_d(direction = -1, option = "C", end = .85) +
+  ylab("Learning score") +
+  xlab("Test") +
+  ylim(0, 3)
+  # facet_grid(. ~ test)
+  # facet_wrap(~test)
 ```
 
 ```{r}
@@ -1110,74 +1165,6 @@ posterior_expectations |>
   facet_wrap(~group4)
 ```
 
-
-### From Heiss blog
-
-
-```{r}
-newdata <- d |>
-  data_grid(group4, test, oldnew)
-
-fitted_4_epred <- fitted_4_epred |>
-  mutate(prob = label_percent(accuracy = 0.1)(.epred))
-
-simulated_conditions <- tribble(
-  ~title, ~newdata,
-  "Test = Colors, Group = Control, Item = New",
-  tibble(test = "colors", group4 = "control", oldnew = "new"),
-  "Test = Colors, Group = Relative pitch",
-  tibble(test = "colors", group4 = "relpitch"),
-  "Test = Colors, Group = Absolute pitch",
-  tibble(test = "colors", group4 = "abspitch"),
-  "Test = Colors, Group = Synaesthesia",
-  tibble(test = "colors", group4 = "syn"),
-  "Test = Tones, Group = Control",
-  tibble(test = "tones", group4 = "control"),
-  "Test = Tones, Group = Relative pitch",
-  tibble(test = "tones", group4 = "relpitch"),
-  "Test = Tones, Group = Absolute pitch",
-  tibble(test = "tones", group4 = "abspitch"),
-  "Test = Tones, Group = Synaesthesia",
-  tibble(test = "tones", group4 = "syn"),
-  "Test = Combined, Group = Control",
-  tibble(test = "combined", group4 = "control"),
-  "Test = Colors, Group = Relative pitch",
-  tibble(test = "combined", group4 = "relpitch"),
-  "Test = Colors, Group = Absolute pitch",
-  tibble(test = "combined", group4 = "abspitch"),
-  "Test = Colors, Group = Synaesthesia",
-  tibble(test = "combined", group4 = "syn")
-)
-```
-
-```{r}
-simulated_conditions |>
-  mutate(pred_plot = map2(newdata, title, ~ {
-    fit_4_groups_alt |>
-      add_predicted_draws(newdata = .x) |>
-      ungroup() |>
-      count(.prediction) |>
-      mutate(
-        prop = n / sum(n),
-        prop_nice = label_percent(accuracy = 0.1)(prop)
-      )
-    ggplot(aes(x = .prediction, y = n)) +
-      geom_col(aes(fill = .prediction)) +
-      geom_text(aes(y = 50, label = prop_nice),
-        color = "white", size = 2.5,
-        angle = 90, hjust = 0
-      ) +
-      scale_y_continuous(labels = label_comma()) +
-      scale_fill_viridis_d(option = "rocket", end = 0.85, guide = "none") +
-      labs(
-        x = "Response", y = "Count",
-        title = .y
-      ) +
-      theme(plot.title = element_text(size = rel(1), hjust = 0.5))
-  }))
-
-wrap_plots(simulated_conditions$pred_plot, nrow = 2, byrow = FALSE)
-```
 
 
 ```{r}
@@ -1203,7 +1190,7 @@ fitted_4_epred |>
 ## Diagnostics
 
 ```{r}
-loo_fit_2 <- loo(fit_2_groups_alt)
+loo_fit_2 <- loo(fit_2_groups)
 
 loo::pareto_k_table(loo_fit_2) |> knitr::kable()
 plot(loo_fit_2)
@@ -1228,16 +1215,6 @@ loo_fit_4 <- loo(fit_4_groups)
 
 loo::pareto_k_table(loo_fit_4) |> knitr::kable()
 plot(loo_fit_4)
-```
-
-## Problematic data points
-```{r echo=FALSE}
-# data[pareto_k_ids(loo_fit_1), ]
-
-d |>
-  filter(row_number() %in% loo::pareto_k_ids(loo_fit_4)) |>
-  select(ID, group2, group4, test, item, oldnew, response) |>
-  knitr::kable()
 ```
 
 
