@@ -315,7 +315,7 @@ sdtdata_2_agg_within |>
       ymin = mean - ci,
       ymax = mean + ci
     ),
-    width = 0.1, size = 1.5
+    width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
   ylab("Learning score") +
@@ -368,7 +368,7 @@ sdtdata_3_agg_within |>
       ymin = mean - ci,
       ymax = mean + ci
     ),
-    width = 0.1, size = 1.5
+    width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
   ylab("Learning score") +
@@ -419,7 +419,7 @@ sdtdata_4_agg_within |>
       ymin = mean - ci,
       ymax = mean + ci
     ),
-    width = 0.1, size = 1.5
+    width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
   ylab("Learning score") +
@@ -462,14 +462,14 @@ sdtdata_3alt_agg_within <- sdtdata_3alt_agg_within |>
 
 sdtdata_3alt_agg_within |>
   ggplot(aes(x = test, y = mean, color = group3alt)) +
-  geom_line(aes(group = group3alt), size = 1.5, linetype = "dashed") +
+  geom_line(aes(group = group3alt), linewidth = 1.5, linetype = "dashed") +
   geom_point(size = 4) +
   geom_errorbar(
     aes(
       ymin = mean - ci,
       ymax = mean + ci
     ),
-    width = 0.1, size = 1.5
+    width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
   ylab("Learning score") +
@@ -637,6 +637,7 @@ The idea is that each individual sets thresholds on the latent scale (depending 
 ## BRMS Models
 
 Set initial values for the thresholds, assuming initially that the thresholds are evenly distributed, i.e. each response category has the same probability of being chosen.
+
 ```{r}
 tibble(rating = 1:5) |>
   mutate(proportion = 1 / 5) |>
@@ -646,7 +647,8 @@ tibble(rating = 1:5) |>
     right_hand_threshold_logit = qlogis(cumulative_proportion)
   )
 ```
-```r priors-inits
+
+```{r priors-inits, eval=FALSE, include=FALSE}
 # priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
 #   prior(normal(-0.405, 1), class = Intercept, coef = 2) +
 #   prior(normal(0.405, 1), class = Intercept, coef = 3) +
@@ -662,6 +664,7 @@ tibble(rating = 1:5) |>
 ```
 
 ### 2 groups
+
 ```{r}
 priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
   prior(normal(-0.405, 1), class = Intercept, coef = 2) +
@@ -670,21 +673,21 @@ priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
   prior(normal(0, 1), class = b) +
   prior(normal(0, 1), class = b, dpar = "disc") +
   prior(student_t(3, 0, 1), class = sd, group = ID) +
-  prior(lkj(2), class = cor, group = ID)
+  prior(lkj(2), class = cor, group = ID) +
+  prior(student_t(3, 0, 1), class = sd, group = item)
 
 inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
 
-formula <- bf(rating ~ group2 * oldnew * test +
-  (1 + oldnew | ID)) +
+formula <- bf(rating ~ oldnew * group2 * test +
+  (1 + oldnew | ID) + (1 | item)) +
   lf(disc ~ 0 + oldnew * test +
-    (1 + oldnew | ID), cmc = FALSE)
+    (1 + oldnew | ID) + (1 | item), cmc = FALSE)
 
 fit_2_groups <- brm(formula,
   family = cumulative("logit"),
   data = d,
   prior = priors,
   init = rep(list(inits), 4),
-  save_warmup = TRUE,
   chains = 4, iter = 2000, cores = 4,
   backend = "cmdstanr",
   file = here::here("models/fit_2_groups"),
@@ -695,6 +698,41 @@ fit_2_groups <- brm(formula,
 
 
 
+
+### 3 Groups
+```{r fit-3-groups}
+priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4) +
+  prior(normal(0, 1), class = b) +
+  prior(normal(0, 1), class = b, dpar = "disc") +
+  prior(student_t(3, 0, 1), class = sd, group = ID) +
+  prior(lkj(2), class = cor, group = ID) +
+  prior(student_t(3, 0, 1), class = sd, group = item)
+
+inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
+
+formula <- bf(rating ~ oldnew * group3 * test +
+  (1 + oldnew | ID) + (1 | item)) +
+  lf(disc ~ 0 + oldnew * test +
+    (1 + oldnew | ID) + (1 | item), cmc = FALSE)
+
+fit_3_groups <- brm(formula,
+  family = cumulative("logit"),
+  data = d,
+  prior = priors,
+  init = rep(list(inits), 4),
+  chains = 4, iter = 2000, cores = 4,
+  backend = "cmdstanr",
+  file = here::here("models/fit_3_groups"),
+  save_model = "stancode/fit_3_groups.stan"
+) |>
+  add_criterion("loo")
+```
+
+
+#### 3 Alternative Groups
 ```{r}
 priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
   prior(normal(-0.405, 1), class = Intercept, coef = 2) +
@@ -709,68 +747,25 @@ priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
 
 inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
 
-formula <- bf(rating ~ group2 * oldnew * test +
+formula <- bf(rating ~ oldnew * group3alt * test +
   (1 + oldnew | ID) + (1 | item)) +
   lf(disc ~ 0 + oldnew * test +
     (1 + oldnew | ID) + (1 | item), cmc = FALSE)
 
-fit_2_groups_alt <- brm(formula,
+
+fit_3_groups_alt <- brm(formula,
   family = cumulative("logit"),
   data = d,
   prior = priors,
   init = rep(list(inits), 4),
-  save_warmup = TRUE,
   chains = 4, iter = 2000, cores = 4,
   backend = "cmdstanr",
-  file = here::here("models/fit_2_groups_alt"),
-  save_model = "stancode/fit_2_groups_alt.stan"
+  file = here::here("models/fit_3_groups_alt"),
+  save_model = "stancode/fit_3_groups_alt.stan"
 ) |>
   add_criterion("loo")
 ```
 
-
-
-```{r}
-int_only_samples <- as_draws_df(fit_2_groups_alt, inc_warmup = TRUE) |>
-  pivot_longer(starts_with("b_Intercept"))
-head(int_only_samples, 6)
-## # A tibble: 6 × 8
-##    disc lprior    lp__ .chain .iteration .draw name             value
-##   <dbl>  <dbl>   <dbl>  <int>      <int> <int> <chr>            <dbl>
-## 1     1  -10.3 -19252.      1          1     1 b_Intercept[1] -2.22
-## 2     1  -10.3 -19252.      1          1     1 b_Intercept[2] -1.48
-## 3     1  -10.3 -19252.      1          1     1 b_Intercept[3] -0.756
-## 4     1  -10.3 -19252.      1          1     1 b_Intercept[4]  0.0863
-## 5     1  -10.3 -19252.      1          1     1 b_Intercept[5]  0.889
-## 6     1  -10.3 -19252.      1          1     1 b_Intercept[6]  1.42
-
-int_only_samples |>
-  filter(.iteration < 100) |>
-  ggplot(aes(x = .iteration, y = value, color = factor(.chain))) +
-  geom_line(size = 0.5) +
-  scale_color_viridis_d(option = "rocket", end = 0.85) +
-  facet_wrap(vars(name), scales = "free_y")
-```
-
-
-### 3 Groups
-```{r fit-3-groups}
-formula <- bf(rating ~ group3 * oldnew * test + (1 + oldnew | ID)) +
-  lf(disc ~ 0 + group3 * oldnew + (1 + oldnew | ID), cmc = FALSE)
-
-fit_3_groups <- brm(formula,
-  family = cumulative("logit"),
-  data = d,
-  prior = priors,
-  init = rep(list(inits), 4),
-  # save_warmup = TRUE,
-  chains = 4, iter = 2000, cores = 4,
-  backend = "cmdstanr",
-  file = here::here("models/fit_3_groups"),
-  save_model = "stancode/fit_3_groups.stan"
-) |>
-  add_criterion("loo")
-```
 
 ### 4 Groups
 
@@ -795,26 +790,29 @@ priors |>
 
 
 ```{r}
-# formula <- bf(rating | thres(gr = group4) ~ group4 * oldnew * test +
-#   (1 + oldnew | gr(ID, by = group4))) +
-#   lf(disc ~ 0 + group4 * oldnew + (1 + oldnew | ID), cmc = FALSE)
+priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
+  prior(normal(-0.405, 1), class = Intercept, coef = 2) +
+  prior(normal(0.405, 1), class = Intercept, coef = 3) +
+  prior(normal(1.39, 1), class = Intercept, coef = 4) +
+  prior(normal(0, 1), class = b) +
+  prior(normal(0, 1), class = b, dpar = "disc") +
+  prior(student_t(3, 0, 1), class = sd, group = ID) +
+  prior(lkj(2), class = cor, group = ID) +
+  prior(student_t(3, 0, 1), class = sd, group = item)
 
-# formula <- bf(rating | thres(gr = test) ~ group4 * oldnew * test +
-# (1 + oldnew | ID)) +
-# lf(disc ~ 0 + group4 * oldnew * test +
-#   (1 + oldnew | ID), cmc = FALSE)
 
-formula <- bf(rating ~ group4 * oldnew * test +
-  (1 + oldnew | ID)) +
-  lf(disc ~ 0 + group4 * oldnew * test +
-    (1 + oldnew | ID), cmc = FALSE)
+inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
+
+formula <- bf(rating ~ oldnew * group4 * test +
+  (1 + oldnew | ID) + (1 | item)) +
+  lf(disc ~ 0 + oldnew * test +
+    (1 + oldnew | ID) + (1 | item), cmc = FALSE)
 
 fit_4_groups <- brm(formula,
   family = cumulative("logit"),
   data = d,
   prior = priors,
   init = rep(list(inits), 4),
-  # save_warmup = TRUE,
   chains = 4, iter = 2000, cores = 4,
   backend = "cmdstanr",
   file = here::here("models/fit_4_groups"),
@@ -823,38 +821,9 @@ fit_4_groups <- brm(formula,
   add_criterion("loo")
 ```
 
-```{r}
-# formula <- bf(rating | thres(gr = group4) ~ group4 * oldnew * test +
-#   (1 + oldnew | gr(ID, by = group4))) +
-#   lf(disc ~ 0 + group4 * oldnew + (1 + oldnew | ID), cmc = FALSE)
-
-# formula <- bf(rating | thres(gr = test) ~ group4 * oldnew * test +
-# (1 + oldnew | ID)) +
-# lf(disc ~ 0 + group4 * oldnew * test +
-#   (1 + oldnew | ID), cmc = FALSE)
-
-formula <- bf(rating ~ group4 * oldnew * test +
-  (1 + oldnew | ID)) +
-  lf(disc ~ 0 + group4 * test +
-    (1 | ID), cmc = FALSE)
-
-fit_4_groups_2 <- brm(formula,
-  family = cumulative("logit"),
-  data = d,
-  prior = priors,
-  init = rep(list(inits), 4),
-  # save_warmup = TRUE,
-  chains = 4, iter = 2000, cores = 4,
-  backend = "cmdstanr",
-  file = here::here("models/fit_4_groups_2"),
-  save_model = here::here("stancode/fit_4_groups_2.stan")
-) |>
-  add_criterion("loo")
-```
 
 
-
-```{r}
+```{r eval=FALSE, include=FALSE}
 priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1, group = colors) +
   prior(normal(-0.405, 1), class = Intercept, coef = 2, group = colors) +
   prior(normal(0.405, 1), class = Intercept, coef = 3, group = colors) +
@@ -870,67 +839,30 @@ priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1, group = colors) +
   prior(normal(0, 1), class = b) +
   prior(normal(0, 1), class = b, dpar = "disc") +
   prior(student_t(3, 0, 1), class = sd, group = ID) +
-  # prior(student_t(3, 0, 1), class = sd, group = item) +
+  prior(student_t(3, 0, 1), class = sd, group = item) +
   prior(lkj(2), class = cor, group = ID)
-# prior(lkj(2), class = cor, group = item)
 
 inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
 
-formula <- bf(rating | thres(gr = test) ~ group4 * oldnew * test +
-  (1 + oldnew | ID)) +
-  lf(disc ~ 0 + group4 * test +
-    (1 | ID), cmc = FALSE)
+formula <- bf(rating | thres(gr = test) ~ oldnew * group4 * test +
+  (1 + oldnew | ID) + (1 | item)) +
+  lf(disc ~ 0 + oldnew * test +
+    (1 + oldnew | ID) + (1 | item), cmc = FALSE)
 
-fit_4_groups_3 <- brm(formula,
+fit_4_groups_alt <- brm(formula,
   family = cumulative("logit"),
   data = d,
   prior = priors,
   init = rep(list(inits), 4),
-  # save_warmup = TRUE,
   chains = 4, iter = 2000, cores = 4,
   backend = "cmdstanr",
-  file = here::here("models/fit_4_groups_3"),
-  save_model = here::here("stancode/fit_4_groups_3.stan")
+  file = here::here("models/fit_4_groups_alt"),
+  save_model = here::here("stancode/fit_4_groups_alt.stan")
 ) |>
   add_criterion("loo")
 ```
 
-```{r, eval=FALSE}
-simulated_conditions <- tribble(
-  ~title, ~newdata,
-  "A = 0, I = 0, C = 0", tibble(action = 0, intention = 0, contact = 0),
-  "A = 0, I = 1, C = 0", tibble(action = 0, intention = 1, contact = 0),
-  "A = 1, I = 0, C = 0", tibble(action = 1, intention = 0, contact = 0),
-  "A = 1, I = 1, C = 0", tibble(action = 1, intention = 1, contact = 0),
-  "A = 0, I = 0, C = 1", tibble(action = 0, intention = 0, contact = 1),
-  "A = 0, I = 1, C = 1", tibble(action = 0, intention = 1, contact = 1)
-) |>
-  mutate(pred_plot = map2(newdata, title, ~ {
-    model_aci |>
-      add_predicted_draws(newdata = .x) |>
-      ungroup() |>
-      count(.prediction) |>
-      mutate(
-        prop = n / sum(n),
-        prop_nice = label_percent(accuracy = 0.1)(prop)
-      ) |>
-      ggplot(aes(x = .prediction, y = n)) +
-      geom_col(aes(fill = .prediction)) +
-      geom_text(aes(y = 50, label = prop_nice),
-        color = "white", size = 2.5,
-        angle = 90, hjust = 0
-      ) +
-      scale_y_continuous(labels = label_comma()) +
-      scale_fill_viridis_d(option = "rocket", end = 0.85, guide = "none") +
-      labs(
-        x = "Response", y = "Count",
-        title = .y
-      ) +
-      theme(plot.title = element_text(size = rel(1), hjust = 0.5))
-  }))
 
-wrap_plots(simulated_conditions$pred_plot, nrow = 2, byrow = FALSE)
-```
 
 
 ```{r}
@@ -948,48 +880,77 @@ fit_4_groups |>
 
 
 
-### 3 Alternative Groups
-```{r}
-formula <- bf(rating ~ group3alt * oldnew * test + (1 + oldnew | ID)) +
-  lf(disc ~ 0 + group3alt * oldnew + (1 + oldnew | ID), cmc = FALSE)
-
-fit_3alt_groups <- brm(formula,
-  family = cumulative("logit"),
-  data = d,
-  prior = priors,
-  init = rep(list(inits), 4),
-  # save_warmup = TRUE,
-  chains = 4, iter = 2000, cores = 4,
-  backend = "cmdstanr",
-  file = here::here("models/fit_3alt_groups"),
-  save_model = "stancode/fit_3alt_groups.stan"
-) |>
-  add_criterion("loo")
-```
-
 ## Model comparison
 
 ```{r}
 loo_compare(
   fit_2_groups,
-  # fit_3_groups,
-  fit_4_groups,
-  fit_4_groups_2,
-  fit_4_groups_3
-  # fit_3alt_groups
-)
+  fit_3_groups,
+  fit_3_groups_alt,
+  fit_4_groups)
 ```
+
+
 
 
 ## Conditional effects
 
 ```{r}
-conditions <- make_conditions(fit_4_groups, c("test", "group4"))
+conditions <- make_conditions(fit_2_groups, c("test", "group2"))
 plot(
-  conditional_effects(fit_4_groups,
+  conditional_effects(fit_2_groups,
     effects = "oldnew",
     conditions = conditions,
-    re_formula = ~ID,
+    # re_formula = ~ID,
+    re_formula = NULL,
+    categorical = TRUE,
+    method = "fitted"
+  ),
+  ncol = 2,
+  theme = theme_tidybayes()
+)
+```
+
+```{r}
+conditions <- make_conditions(fit_3_groups, c("test", "group3"))
+plot(
+  conditional_effects(fit_3_groups,
+    effects = "oldnew",
+    conditions = conditions,
+    # re_formula = ~ID,
+    re_formula = NULL,
+    categorical = TRUE,
+    method = "fitted"
+  ),
+  ncol = 3,
+  theme = theme_tidybayes()
+)
+```
+
+```{r}
+conditions <- make_conditions(fit_3_groups_alt, c("test", "group3alt"))
+plot(
+  conditional_effects(fit_3_groups_alt,
+    effects = "oldnew",
+    conditions = conditions,
+    # re_formula = ~ID,
+    re_formula = NULL,
+    categorical = TRUE,
+    method = "fitted"
+  ),
+  ncol = 3,
+  theme = theme_tidybayes()
+)
+```
+
+```{r}
+conditions <- make_conditions(fit_4_groups_alt, c("test", "group4"))
+plot(
+  conditional_effects(fit_4_groups_alt,
+    effects = "oldnew",
+    conditions = conditions,
+    # re_formula = ~ID,
+    re_formula = NULL,
     categorical = TRUE,
     method = "fitted"
   ),
@@ -1017,21 +978,21 @@ plot(
 
 
 ```{r}
-fitted_4_linpred <- d |>
-  modelr::data_grid(group4, test, oldnew) |>
-  add_linpred_draws(fit_4_groups,
-    dpar = TRUE,
-    transform = TRUE,
-    re_formula = ~ID,
-    ndraws = 100
-  )
+# fitted_4_linpred <- d |>
+#   data_grid(group4, test, oldnew) |>
+#   add_linpred_draws(fit_4_groups,
+#     dpar = TRUE,
+#     transform = TRUE,
+#     re_formula = ~ID,
+#     ndraws = 100
+#   )
 
 fitted_4_epred <- d |>
-  modelr::data_grid(group4, test, oldnew) |>
+  data_grid(group4, test, oldnew) |>
   add_epred_draws(fit_4_groups,
     dpar = TRUE,
     re_formula = ~ID,
-    ndraws = 100
+    ndraws = 500
   )
 ```
 
@@ -1045,8 +1006,10 @@ fitted_4_epred |>
   # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group4) +
   scale_size_continuous(guide = FALSE) +
+  scale_y_continuous(limits = c(0, 1)) +
   # scale_color_brewer(palette = "RdYlBu")
-  scale_color_viridis_d()
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  theme_apa()
 ```
 
 ```{r}
@@ -1060,7 +1023,117 @@ fitted_4_linpred |>
 ```
 
 
+### From Heiss blog
+
+
+```{r}
+newdata <- d |>
+  data_grid(group4, test, oldnew)
+
+fitted_4_epred <- fitted_4_epred |>
+  mutate(prob = label_percent(accuracy = 0.1)(.epred))
+
+simulated_conditions <- tribble(
+  ~title, ~newdata,
+  "Test = Colors, Group = Control, Item = New",
+  tibble(test = "colors", group4 = "control", oldnew = "new"),
+  "Test = Colors, Group = Relative pitch",
+  tibble(test = "colors", group4 = "relpitch"),
+  "Test = Colors, Group = Absolute pitch",
+  tibble(test = "colors", group4 = "abspitch"),
+  "Test = Colors, Group = Synaesthesia",
+  tibble(test = "colors", group4 = "syn"),
+  "Test = Tones, Group = Control",
+  tibble(test = "tones", group4 = "control"),
+  "Test = Tones, Group = Relative pitch",
+  tibble(test = "tones", group4 = "relpitch"),
+  "Test = Tones, Group = Absolute pitch",
+  tibble(test = "tones", group4 = "abspitch"),
+  "Test = Tones, Group = Synaesthesia",
+  tibble(test = "tones", group4 = "syn"),
+  "Test = Combined, Group = Control",
+  tibble(test = "combined", group4 = "control"),
+  "Test = Colors, Group = Relative pitch",
+  tibble(test = "combined", group4 = "relpitch"),
+  "Test = Colors, Group = Absolute pitch",
+  tibble(test = "combined", group4 = "abspitch"),
+  "Test = Colors, Group = Synaesthesia",
+  tibble(test = "combined", group4 = "syn")
+)
+```
+
+```{r}
+simulated_conditions |>
+  mutate(pred_plot = map2(newdata, title, ~ {
+    fit_4_groups_alt |>
+      add_predicted_draws(newdata = .x) |>
+      ungroup() |>
+      count(.prediction) |>
+      mutate(
+        prop = n / sum(n),
+        prop_nice = label_percent(accuracy = 0.1)(prop)
+      )
+    ggplot(aes(x = .prediction, y = n)) +
+      geom_col(aes(fill = .prediction)) +
+      geom_text(aes(y = 50, label = prop_nice),
+        color = "white", size = 2.5,
+        angle = 90, hjust = 0
+      ) +
+      scale_y_continuous(labels = label_comma()) +
+      scale_fill_viridis_d(option = "rocket", end = 0.85, guide = "none") +
+      labs(
+        x = "Response", y = "Count",
+        title = .y
+      ) +
+      theme(plot.title = element_text(size = rel(1), hjust = 0.5))
+  }))
+
+wrap_plots(simulated_conditions$pred_plot, nrow = 2, byrow = FALSE)
+```
+
+
+```{r}
+fitted_4_epred |>
+  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
+  # stat_interval(position = position_dodge(width = 0.9), alpha = 0.5) +
+  stat_pointinterval(position = position_dodge(width = .4)) +
+  # geom_col(position = position_dodge(width = 1)) +
+  # geom_text(aes(y = .epred + 0.2, label = prob)) +
+  # geom_text(aes(y = 0.1, label = prob)
+  #      color = "white", size = 2.5,
+  #      angle = 90, hjust = 0
+  #    ) +
+  # geom_line(aes(group = oldnew)) +
+  facet_grid(test ~ group4) +
+  scale_size_continuous(guide = FALSE) +
+  # scale_color_brewer(palette = "RdYlBu")
+  scale_color_viridis_d(begin = 0.1, end = 0.8)
+# scale_fill_viridis_d(begin = 0.3, end = 0.8)
+```
+
+
 ## Diagnostics
+
+```{r}
+loo_fit_2 <- loo(fit_2_groups_alt)
+
+loo::pareto_k_table(loo_fit_2) |> knitr::kable()
+plot(loo_fit_2)
+```
+
+```{r}
+loo_fit_3 <- loo(fit_3_groups)
+
+loo::pareto_k_table(loo_fit_3) |> knitr::kable()
+plot(loo_fit_3)
+```
+```{r}
+loo_fit_3_alt <- loo(fit_3_groups_alt)
+
+loo::pareto_k_table(loo_fit_3_alt) |> knitr::kable()
+plot(loo_fit_3_alt)
+```
+
 
 ```{r}
 loo_fit_4 <- loo(fit_4_groups)
@@ -1094,7 +1167,9 @@ pp_check(fit_4_groups,
     subtitle = "The thresholds can now vary across items."
   )
 ```
-# Discussion
+# Simulate future data
+
+Simulate new synaesthetes   
 
 
 
