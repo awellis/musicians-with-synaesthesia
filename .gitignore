@@ -60,3 +60,7 @@ musicians-with-synaesthesia.code-workspace
 # Stan models
 
 *.stan
+
+# pandoc and latex
+
+supplementary_files/
