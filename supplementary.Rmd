@@ -81,6 +81,7 @@ library(tidyverse)
 library(scales)
 library(patchwork)
 # library(viridis)
+library(ggokabeito)
 library(brms)
 library(tidybayes)
 library(modelr)
@@ -90,6 +91,21 @@ library(modelr)
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+```
+
+# Plot theme
+
+```{r}
+theme_clean <- function() {
+  theme_minimal(base_family = "Helvetica", base_size = 12) +
+    theme(panel.grid.minor = element_blank(),
+          plot.title = element_text(face = "bold"),
+          axis.title = element_text(face = "bold"),
+          strip.text = element_text(face = "bold", size = rel(1), hjust = 0),
+          strip.background = element_rect(fill = "grey80", color = NA),
+          # strip.background = element_rect(colour="grey80", fill="grey80"),
+          legend.title = element_text(face = "bold"))
+}
 ```
 
 
@@ -253,8 +269,10 @@ point_estimates |>
   geom_line(aes(group = ID)) +
   geom_point() +
   facet_wrap(~group4) +
+  # scale_color_okabe_ito() +
   scale_color_viridis_d(direction = 1, option = "C", end = .80) +
-  theme_tidybayes()
+  labs(x = "Test", y = "Mean rating", color = "Group") +
+  theme_clean()
 ```
 
 ```{r}
@@ -266,7 +284,8 @@ d %>%
   geom_point() +
   facet_wrap(~group4) +
   scale_color_viridis_d(direction = 1, option = "C", end = .80) +
-  theme_tidybayes()
+  labs(x = "Test", y = "Mean rating", color = "Triplet") +
+  theme_clean()
 ```
 
 
@@ -318,9 +337,9 @@ sdtdata_2_agg_within |>
     width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
-  ylab("Learning score") +
-  xlab("Test") +
   ylim(0, 3) +
+  labs(x = "Test", y = "Learning score", color = "Group") +
+  theme_clean() +
   guides(color = guide_legend(
     title = "Group",
     title.position = "top"
@@ -371,9 +390,9 @@ sdtdata_3_agg_within |>
     width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
-  ylab("Learning score") +
-  xlab("Test") +
   ylim(0, 3) +
+  labs(x = "Test", y = "Learning score", color = "Group") +
+  theme_clean() +
   guides(color = guide_legend(
     title = "Group",
     title.position = "top"
@@ -422,9 +441,9 @@ sdtdata_3alt_agg_within |>
     width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
-  ylab("Learning score") +
-  xlab("Test") +
   ylim(0, 3) +
+  labs(x = "Test", y = "Learning score", color = "Group") +
+  theme_clean() +
   guides(color = guide_legend(
     title = "Group",
     title.position = "top"
@@ -472,20 +491,204 @@ sdtdata_4_agg_within |>
     width = 0.1, linewidth = 1.5
   ) +
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
-  ylab("Learning score") +
-  xlab("Test") +
   ylim(0, 3) +
+  labs(x = "", y = "Learning score", color = "Group") +
+  theme_clean() +
   guides(color = guide_legend(
     title = "Group",
     title.position = "top"
   ))
 ```
 
+# Regression models
+
+FIrst, we create a data set by taking the mean rating for each person in each test for both old and new items. Then we compute the _learning score_ by subtracting the mean rating for new items from the mean rating for old items. 
+
+```{r}
+dd <- d |>
+  group_by(ID, group4, test, oldnew) |>
+  summarise(mean = mean(response)) |>
+  ungroup() |> 
+  pivot_wider(names_from = oldnew, values_from = mean) |>
+  mutate(score = old - new) 
+```
+
+The learning score is bounded in $[-4, 4]$. We will initially use a linear regression to model the outcome, a beta regression would be a better choice for a bounded variable.
+
+```{r}
+normalize <- function(x, max_x = 4) {
+  min_x <- -max_x
+  (x - min_x)/(max_x - min_x)
+  }
+
+dd <- dd |> 
+  mutate(normscore = normalize(score))
+```
+
+## 2 groups
+
+```{r}
+priors <- prior(normal(0, 1), class = Intercept) +
+  prior(normal(0, 1), class = b) +
+  prior(student_t(3, 0, 1), class = sd, group = ID) 
+
+fit_ls_2_groups <- brm(score ~ group2 * test + (1 | ID),
+                      family = gaussian,
+                      prior = priors,
+                      data = sdtdata_2,
+                      chains = 4, iter = 2000, cores = 4,
+                      backend = "cmdstanr",
+                      file = here::here("models/fit_ls_2_groups"),
+                      save_model = here::here("stancode/fit_ls_2_groups.stan")
+                      ) |>
+  add_criterion("loo")
+```
+
+## 3 groups
+
+```{r}
+priors <- prior(normal(0, 1), class = Intercept) +
+  prior(normal(0, 1), class = b) +
+  prior(student_t(3, 0, 1), class = sd, group = ID) 
+
+fit_ls_3_groups <- brm(score ~ group3 * test + (1 | ID),
+                      family = gaussian,
+                      prior = priors,
+                      data = sdtdata_3,
+                      chains = 4, iter = 2000, cores = 4,
+                      backend = "cmdstanr",
+                      file = here::here("models/fit_ls_3_groups"),
+                      save_model = here::here("stancode/fit_ls_3_groups.stan")
+                      ) |>
+  add_criterion("loo")
+```
+## 3 groups (controls, musicians, synaesthetes)
+
+```{r}
+priors <- prior(normal(0, 1), class = Intercept) +
+  prior(normal(0, 1), class = b) +
+  prior(student_t(3, 0, 1), class = sd, group = ID) 
+
+fit_ls_3_groups_alt <- brm(score ~ group3alt * test + (1 | ID),
+                      family = gaussian,
+                      prior = priors,
+                      data = sdtdata_3alt,
+                      chains = 4, iter = 2000, cores = 4,
+                      backend = "cmdstanr",
+                      file = here::here("models/fit_ls_3_groups_alt"),
+                      save_model = here::here("stancode/fit_ls_3_groups_alt.stan")
+                      ) |>
+  add_criterion("loo")
+```
+## 4 groups
+```{r}
+priors <- prior(normal(0, 1), class = Intercept) +
+  prior(normal(0, 1), class = b) +
+  prior(student_t(3, 0, 1), class = sd, group = ID) 
+
+fit_ls_4_groups <- brm(score ~ group4 * test + (1 | ID),
+                      family = gaussian,
+                      prior = priors,
+                      data = dd,
+                      chains = 4, iter = 2000, cores = 4,
+                      backend = "cmdstanr",
+                      file = here::here("models/fit_ls_4_groups"),
+                      save_model = here::here("stancode/fit_ls_4_groups.stan")
+                      ) |>
+  add_criterion("loo")
+```
+
+
+```{r}
+mcmc_plot(fit_ls_4_groups)
+```
+
+## Model comparison
+
+The models cannot be distringuished based on their out-of-sample predictive accuracy (loo). In order to perform meaningful model comparisons, i.e. hypothesis tests, we need a different approach, possibly based on posterior predictive checks.
+
+```{r}
+loo_compare(fit_ls_2_groups, 
+            fit_ls_3_groups, 
+            fit_ls_3_groups_alt, 
+            fit_ls_4_groups)
+```
+
+
+## Contrasts
+
+```{r}
+epred_ls_4_groups <- dd |>
+  data_grid(group4, test) |>
+  add_epred_draws(fit_ls_4_groups,
+                  re_formula = ~ID,
+                  ndraws = 500)
+```
+
+```{r}
+epred_ls_4_groups |>
+  ggplot(aes(x = test, y = .epred, color = group4)) +
+  stat_pointinterval(position = position_dodge(width = .4)) +
+  scale_size_continuous(guide = FALSE) +
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  theme_clean()
+```
+
+The above figure shoes the expectations of the posterior predictive distributions for each group in each of the three test conditions. THe synaesthesia group has a consistently higher expected learning score over all tests. In this case, however, we are interested in the comparison between musicians with relative and absolute pitch for all three tests.
 
 
 
-## Individial responses
+```{r}
+epred_ls_4_groups_contrast <- 
+  expand_grid(group4 = c("relpitch", "abspitch"), 
+         test = levels(dd$test)) |> 
+  add_epred_draws(fit_ls_4_groups,
+                  re_formula = ~ID,
+                  ndraws = 500)
+```
 
+```{r}
+epred_ls_4_groups_contrast |> 
+    ggplot(aes(x = test, y = .epred, color = group4)) +
+  stat_pointinterval(position = position_dodge(width = .4)) +
+  scale_size_continuous(guide = FALSE) +
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  theme_clean()
+```
+
+
+```{r}
+contrasts_rel_abs <- fit_ls_4_groups |> 
+  emmeans::emmeans(~group4 | test) |> 
+  emmeans::contrast("pairwise") |> 
+  gather_emmeans_draws() |> 
+  mutate(indicator = if_else(contrast == "relpitch - abspitch", 1, 0))
+```
+
+
+
+```{r}
+zero_color <- ggokabeito::palette_okabe_ito()[1]
+
+contrasts_rel_abs |> 
+  ggplot(aes(y = contrast, x = .value, fill = as_factor(indicator))) +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  geom_eye() +
+  scale_fill_okabe_ito(guide="none") +
+  # stat_summary(aes(group = NA), fun.y = mean, geom = "line") +
+  facet_grid(~ test) +
+  theme_clean()
+```
+
+The above figure shows the posterior distributions of the pairwise group differences for each test, in the model allowing for 4 separate groups. When allowing for a separate group for musicians with synaesthesia, the expected difference between musicians with relative and absolute pitch is consistenly centred on zero for all testing conditions (blue distributions).
+
+
+
+# Individial responses
+
+The learning score is computed by averaging over individual ratings. We thus lose information about the subject- and group specific usage of individual ratings. Of particular interest are the extreme rating categories, which denote extreme certainty that either _new_ items have never been seen (rating 1) or that _old_ items have been previously seen (rating 5).  
+
+From visual inspection of individual subjects' ratings it is apparent that synaesthetes tend to use the extreme categories more often; in particular, they more frequently reject previously unseen items with a rating of $1$.
 
 ```{r}
 d |>
@@ -494,29 +697,12 @@ d |>
   ggplot(aes(x = oldnew, fill = rating)) +
   geom_bar(position = position_fill(reverse = TRUE)) +
   scale_y_continuous(labels = scales::percent) +
-  # scale_fill_brewer(
-  # name = "Rating:",
-  # type = "div", palette = "Spectral", direction = -1) +
-
-  # scale_x_continuous(breaks = 1:5) +
   facet_wrap(~ID) +
   ylab("Proportion") +
+  labs(x = "Triplet", y = "Proportion", color = "Rating") +
+  theme_clean() +
   ggtitle("Synaesthetes")
 ```
-
-
-```r
-d |>
-  filter(group4 == "syn") |>
-  mutate(ID = fct_drop(ID)) |>
-  ggplot(aes(x = rating, fill = oldnew)) +
-  geom_bar(position = position_dodge2(preserve = "single")) +
-  # scale_x_continuous(breaks = 1:5) +
-  facet_wrap(~ID) +
-  ggtitle("Synaesthetes")
-```
-
-
 ```{r}
 d |>
   filter(group4 == "abspitch") |>
@@ -524,22 +710,15 @@ d |>
   ggplot(aes(x = oldnew, fill = rating)) +
   geom_bar(position = position_fill(reverse = TRUE)) +
   scale_y_continuous(labels = scales::percent) +
-  # scale_x_continuous(breaks = 1:5) +
   facet_wrap(~ID) +
   ylab("Proportion") +
+  labs(x = "Triplet", y = "Proportion", color = "Rating") +
+  theme_clean() +
   ggtitle("Absolute Pitch")
 ```
 
-```{r}
-# d |>
-#   filter(group4 == "relpitch") |>
-#   mutate(ID = fct_drop(ID)) |>
-#   ggplot(aes(x = rating, fill = oldnew)) +
-#   geom_bar(position = position_dodge2(preserve = "single")) +
-#   # scale_x_continuous(breaks = 1:5) +
-#   facet_wrap(~ID) +
-#   ggtitle("Relative Pitch")
 
+```{r}
 d |>
   filter(group4 == "relpitch") |>
   mutate(ID = fct_drop(ID)) |>
@@ -549,6 +728,8 @@ d |>
   # scale_x_continuous(breaks = 1:5) +
   facet_wrap(~ID) +
   ylab("Proportion") +
+  labs(x = "Triplet", y = "Proportion", color = "Rating") +
+  theme_clean() +
   ggtitle("Relative Pitch")
 ```
 
@@ -622,22 +803,20 @@ tibble(x = seq(from = -4, to = 8, by = .1)) |>
     option = "B", direction = -1,
     begin = 1 / 3, end = 2 / 3
   ) +
-  scale_y_continuous(NULL, breaks = NULL) +
+  # scale_y_continuous(NULL, breaks = NULL) +
   # coord_cartesian(xlim = -4:6) +
   xlab("") +
-  theme_bw(base_size = 16) +
+  theme_clean() +
   theme(
-    panel.grid = element_blank(),
-    legend.title = element_blank(),
     legend.position = "bottom"
   )
 ```
 
-The idea is that each individual sets thresholds on the latent scale (depending on the type of the test). We allow the variance of the internal representation to differ between old and new items.
+The idea is that each individual sets thresholds on the latent scale, depending on the type of the test. We allow the variance of the internal representation to differ between old and new items. Thresholds are shown above as dashed lines. If the internal representation lies between thresholds $\tau_k$ and $\tau_{k+1}$, the corresponding rating is chosen.
 
 ## BRMS Models
 
-Set initial values for the thresholds, assuming initially that the thresholds are evenly distributed, i.e. each response category has the same probability of being chosen.
+Set initial values for sampling the thresholds, assuming initially that the thresholds are evenly distributed, i.e. each response category has the same probability of being chosen.
 
 ```{r}
 tibble(rating = 1:5) |>
@@ -647,21 +826,6 @@ tibble(rating = 1:5) |>
     right_hand_threshold = qnorm(cumulative_proportion),
     right_hand_threshold_logit = qlogis(cumulative_proportion)
   )
-```
-
-```{r priors-inits, eval=FALSE, include=FALSE}
-# priors <- prior(normal(-1.39, 1), class = Intercept, coef = 1) +
-#   prior(normal(-0.405, 1), class = Intercept, coef = 2) +
-#   prior(normal(0.405, 1), class = Intercept, coef = 3) +
-#   prior(normal(1.39, 1), class = Intercept, coef = 4) +
-#   prior(normal(0, 1), class = b) +
-#   prior(normal(0, 1), class = b, dpar = "disc") +
-#   prior(student_t(3, 0, 1), class = sd, group = ID) +
-#   # prior(student_t(3, 0, 1), class = sd, group = item) +
-#   prior(lkj(2), class = cor, group = ID)
-# # prior(lkj(2), class = cor, group = item)
-
-# inits <- list(Intercept = c(-1.39, -0.405, 0.405, 1.39))
 ```
 
 ### 2 groups
@@ -771,12 +935,6 @@ fit_3_groups_alt <- brm(formula,
 ### 4 Groups
 
 ```{r}
-p <- get_prior(formula, family = cumulative(), data = d)
-# p2 <- validate_prior(priors, formula, data = d, family = cumulative())
-```
-
-
-```{r}
 priors |>
   parse_dist(prior) |>
   filter(class == "Intercept") |>
@@ -786,7 +944,8 @@ priors |>
     title = "stat_halfeye()",
     subtitle = "with brms::prior() and ggdist::parse_dist() to visualize priors",
     x = NULL
-  )
+  ) +
+  theme_clean()
 ```
 
 
@@ -894,9 +1053,9 @@ loo_compare(
 
 
 
-## Conditional effects
+## Expectations of posterior predictive distribution
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 conditions <- make_conditions(fit_2_groups, c("test", "group2"))
 plot(
   conditional_effects(fit_2_groups,
@@ -908,11 +1067,11 @@ plot(
     method = "fitted"
   ),
   ncol = 2,
-  theme = theme_tidybayes()
+  theme = theme_clean()
 )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 conditions <- make_conditions(fit_3_groups, c("test", "group3"))
 plot(
   conditional_effects(fit_3_groups,
@@ -924,11 +1083,11 @@ plot(
     method = "fitted"
   ),
   ncol = 3,
-  theme = theme_tidybayes()
+  theme = theme_clean()
 )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 conditions <- make_conditions(fit_3_groups_alt, c("test", "group3alt"))
 plot(
   conditional_effects(fit_3_groups_alt,
@@ -940,54 +1099,27 @@ plot(
     method = "fitted"
   ),
   ncol = 3,
-  theme = theme_tidybayes()
+  theme = theme_clean()
 )
 ```
 
-```{r}
-conditions <- make_conditions(fit_4_groups_alt, c("test", "group4"))
-plot(
-  conditional_effects(fit_4_groups_alt,
-    effects = "oldnew",
-    conditions = conditions,
-    # re_formula = ~ID,
-    re_formula = NULL,
-    categorical = TRUE,
-    method = "fitted"
-  ),
-  ncol = 4,
-  theme = theme_tidybayes()
-)
-```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 conditions <- make_conditions(fit_4_groups, c("test", "group4"))
 plot(
   conditional_effects(fit_4_groups,
     effects = "oldnew",
     conditions = conditions,
     re_formula = ~ (1 + oldnew | ID),
-    # allow_new_levels = TRUE,
-    # sample_new_levels = "gaussian",
     categorical = TRUE
-    # method = "fitted"
   ),
   ncol = 4,
-  theme = theme_tidybayes()
+  theme = theme_clean()
 )
 ```
-## Expectations of posterior predictive distribution
+
 
 ```{r}
-# fitted_4_linpred <- d |>
-#   data_grid(group4, test, oldnew) |>
-#   add_linpred_draws(fit_4_groups,
-#     dpar = TRUE,
-#     # transform = TRUE,
-#     re_formula = ~ID,
-#     ndraws = 500
-#   )
-
 epred_2_groups <- d |>
   data_grid(group2, test, oldnew) |>
   add_epred_draws(fit_2_groups,
@@ -1022,10 +1154,6 @@ epred_4_groups <- d |>
 ```
 
 
-```{r}
-library(RColorBrewer)
-```
-
 
 ```{r}
 epred_2_groups |>
@@ -1036,12 +1164,12 @@ epred_2_groups |>
   scale_y_continuous(limits = c(0, 1)) +
   # scale_color_brewer(palette = "RdYlBu")
   # scale_size_continuous(guide = "none") +
-  scale_color_manual(values = brewer.pal(6, "Blues")[-c(1)]) +
-  # scale_color_viridis_d(begin = 0.0, end = 0.8) +
-  theme_apa()
+  # scale_color_manual(values = brewer.pal(6, "Blues")[-c(1)]) +
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  theme_clean()
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 group2_plot <- epred_2_groups |> 
   ggplot(aes(x = .epred, y = rating)) +
   coord_cartesian(expand = FALSE) +
@@ -1049,17 +1177,18 @@ group2_plot <- epred_2_groups |>
   theme_classic() +
   theme(strip.background = element_blank(), strip.placement = "outside") +
   ggtitle("P(rating | item, test, group)") +
-  xlab("Predicted score")
+  xlab("Predicted score") +
+  theme_clean()
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 group2_plot +
    stat_summary(fun = median, geom = "bar", fill = "gray65", width = 1, color = "white") +
   stat_pointinterval()
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 group2_plot +
   stat_ccdfinterval() +
   expand_limits(x = 0) #ensure bars go to 0
@@ -1074,23 +1203,24 @@ epred_3_groups |>
   # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group3) +
   scale_size_continuous(guide = FALSE) +
-  scale_y_continuous(limits = c(0, 1)) +
+  # scale_y_continuous(limits = c(0, 1)) +
+  expand_limits(y = 0) +
   # scale_color_brewer(palette = "RdYlBu")
   scale_color_viridis_d(begin = 0.0, end = 0.8) +
-  theme_apa()
+  theme_clean()
 ```
 
 ```{r}
 epred_3_groups_alt |>
-  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
+  ggplot(aes(x = rating, y = .epred, color = oldnew)) +
   stat_pointinterval(position = position_dodge(width = .4)) +
   # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group3alt) +
   scale_size_continuous(guide = FALSE) +
-  scale_y_continuous(limits = c(0, 1)) +
+  expand_limits(y = 0) +  
   # scale_color_brewer(palette = "RdYlBu")
   scale_color_viridis_d(begin = 0.0, end = 0.8) +
-  theme_apa()
+  theme_clean()
 ```
 
 
@@ -1101,13 +1231,13 @@ epred_4_groups |>
   # geom_line(aes(group = oldnew)) +
   facet_grid(test ~ group4) +
   scale_size_continuous(guide = FALSE) +
-  scale_y_continuous(limits = c(0, 1)) +
+  expand_limits(y = 0) +  
   # scale_color_brewer(palette = "RdYlBu")
   scale_color_viridis_d(begin = 0.0, end = 0.8) +
-  theme_apa()
+  theme_clean()
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 sdtdata_4_agg_within |>
   ggplot(aes(x = test, y = mean, color = group4)) +
   geom_line(aes(group = group4), linewidth = 1.5, linetype = "dashed") +
@@ -1128,6 +1258,10 @@ sdtdata_4_agg_within |>
     title.position = "top"
   ))
 ```
+
+# Posterior expectations
+
+The following plots show the exptected learning scores, computed from the models posterior predictive distribution. This plot is shown merely to demonstrate that the models output can be used to create a plot that is similar to the learning score computed from the data. This could serve as a posterior predictive check, i.e. in order to show that the models predictions closely match the empirical data (the model predicts data that are similar to the actual data) according to some desired metric (in this case learning score).
 
 
 ```{r}
@@ -1153,7 +1287,8 @@ posterior_expectations |>
   scale_color_viridis_d(direction = -1, option = "C", end = .85) +
   ylab("Learning score") +
   xlab("Test") +
-  ylim(0, 3)
+  ylim(0, 3) +
+  theme_clean()
   # facet_grid(. ~ test)
   # facet_wrap(~test)
 ```
@@ -1162,81 +1297,136 @@ posterior_expectations |>
 posterior_expectations |> 
   ggplot(aes(x = test, y = score)) +
   stat_interval(.width = c(.50, .80, .95)) +
-  facet_wrap(~group4)
+  facet_wrap(~group4) +
+  scale_color_brewer(palette = "Blues") +
+  theme_clean()
 ```
 
 
 
-```{r}
-fitted_4_epred |>
-  ggplot(aes(x = .category, y = .epred, color = oldnew)) +
-  # stat_interval(position = position_dodge(width = 0.9), alpha = 0.5) +
-  stat_pointinterval(position = position_dodge(width = .4)) +
-  # geom_col(position = position_dodge(width = 1)) +
-  # geom_text(aes(y = .epred + 0.2, label = prob)) +
-  # geom_text(aes(y = 0.1, label = prob)
-  #      color = "white", size = 2.5,
-  #      angle = 90, hjust = 0
-  #    ) +
-  # geom_line(aes(group = oldnew)) +
-  facet_grid(test ~ group4) +
-  scale_size_continuous(guide = FALSE) +
-  # scale_color_brewer(palette = "RdYlBu")
-  scale_color_viridis_d(begin = 0.1, end = 0.8)
-# scale_fill_viridis_d(begin = 0.3, end = 0.8)
-```
 
-
-## Diagnostics
-
-```{r}
-loo_fit_2 <- loo(fit_2_groups)
-
-loo::pareto_k_table(loo_fit_2) |> knitr::kable()
-plot(loo_fit_2)
-```
-
-```{r}
-loo_fit_3 <- loo(fit_3_groups)
-
-loo::pareto_k_table(loo_fit_3) |> knitr::kable()
-plot(loo_fit_3)
-```
-```{r}
-loo_fit_3_alt <- loo(fit_3_groups_alt)
-
-loo::pareto_k_table(loo_fit_3_alt) |> knitr::kable()
-plot(loo_fit_3_alt)
-```
-
-
-```{r}
-loo_fit_4 <- loo(fit_4_groups)
-
-loo::pareto_k_table(loo_fit_4) |> knitr::kable()
-plot(loo_fit_4)
-```
-
-
-## PP checks
-
-
-```{r}
-pp_check(fit_4_groups,
-  type = "bars_grouped", group = "group4",
-  ndraws = 500, size = 1 / 2, fatten = 3 / 2
-) +
-  # ylim(0, 80) +
-  labs(
-    title = "fit_4_groups",
-    subtitle = "The thresholds can now vary across items."
-  )
-```
 # Simulate future data
 
-Simulate new synaesthetes   
+This is (in my opinion) a very valuable part of the data analysis, because we can use our model to simulate unseen subjects from the 4 groups, according to the estimted random effects structure. Here, I show one simulated subject from the musician group (rel/abs pitch) and one simulated synaesthete.
+
+```{r}
+newdata <- expand_grid(group3alt = c("syn", "musician"),
+                       oldnew = c("new", "old"),
+                       test = c("colors", "tones", "combined"), 
+                       ID = NA) |> 
+  mutate(across(where(is_character), as_factor),
+         group3alt = fct_relevel(group3alt,
+                                 "musician", "syn"),
+         test = fct_relevel(test,
+                            "colors", "tones", "combined"))
+
+preds <- fit_3_groups_alt |> 
+  add_epred_draws(newdata = newdata,
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~(1 | ID) + (1 | item),
+                  ndraws = 500,
+                  allow_new_levels = TRUE,
+                  sample_new_levels = "gaussian")
+
+```
+
+```{r}
+preds |> 
+  ggplot(aes(x = rating, y = .epred, color = oldnew)) +
+  stat_pointinterval(position = position_dodge(width = .2)) +
+  facet_grid(test ~ group3alt, labeller = label_both) +
+  scale_size_continuous(guide = FALSE) +
+  expand_limits(y = 0) +
+  # scale_color_okabe_ito() +
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  labs(x = "Rating", y = "Predicted probability", color = "Triplet") +
+  theme_clean() +
+  theme(legend.position = "bottom")
+```
 
 
+
+In the next figure, I show 10 simulated synaesthetes in the combined test, and contrast these with ten simulated musicians with either relative or absolute pitch.
+
+```{r}
+newdata <- expand_grid(group3alt = "syn",
+                       oldnew = c("new", "old"),
+                       test = "combined", 
+                       ID = str_c("Synaesthete ", 1:10)) |> 
+  mutate(across(where(is_character), as_factor),
+         test = fct_relevel(test,
+                            "colors", "tones", "combined"))
+
+preds <- fit_3_groups_alt |> 
+  add_epred_draws(newdata = newdata,
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~(1 | ID) + (1 | item),
+                  ndraws = 500,
+                  allow_new_levels = TRUE,
+                  sample_new_levels = "gaussian")
+```
+
+
+```{r}
+p_syn <- preds |> 
+  ggplot(aes(x = rating, y = .epred, color = oldnew)) +
+  stat_pointinterval(position = position_dodge(width = .2)) +
+  facet_wrap(~ ID) +
+  scale_size_continuous(guide = FALSE) +
+  expand_limits(y = 0) +
+  # scale_color_okabe_ito() +
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  labs(x = "Rating", y = "Predicted probability", color = "Triplet") +
+  theme_clean() +
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+p_syn
+```
+
+```{r}
+newdata <- expand_grid(group3alt = "musician",
+                       oldnew = c("new", "old"),
+                       test = "combined", 
+                       ID = str_c("Musician ", 1:10)) |> 
+  mutate(across(where(is_character), as_factor),
+         test = fct_relevel(test,
+                            "colors", "tones", "combined"))
+
+preds <- fit_3_groups_alt |> 
+  add_epred_draws(newdata = newdata,
+                  category = "rating",
+                  dpar = TRUE,
+                  re_formula = ~(1 | ID) + (1 | item),
+                  ndraws = 500,
+                  allow_new_levels = TRUE,
+                  sample_new_levels = "gaussian")
+```
+
+
+```{r}
+p_musician <- preds |> 
+  ggplot(aes(x = rating, y = .epred, color = oldnew)) +
+  stat_pointinterval(position = position_dodge(width = .2)) +
+  facet_wrap(~ ID) +
+  scale_size_continuous(guide = FALSE) +
+  expand_limits(y = 0) +
+  # scale_color_okabe_ito() +
+  scale_color_viridis_d(begin = 0.0, end = 0.8) +
+  labs(x = "Rating", y = "Predicted probability", color = "Triplet") +
+  theme_clean() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+p_musician
+```
+
+Overall, we can predict from these simulations that synaethetes mainly differ from musicians with relative and absolute pitch in their use of the extreme categories (1 and 5). When presented with previously unseen triplets, synaesthetes consistently use a rating of 1 to reject new items with great confidence, while musicians without synaesthesia are seemingly unable to identify previously unseen triplets with comparable confidence. The differences are less pronounced at the other end of the rating scale (identifying previoulsy seen triplets).
 
 \newpage
 
