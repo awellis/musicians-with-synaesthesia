@@ -68,9 +68,9 @@ header-includes:
 csl               : "`r system.file('rmd', 'apa7.csl', package = 'papaja')`"
 documentclass     : "apa7"
 output:         
-    papaja::apa6_pdf:
-        keep_tex:  true
-    # papaja::apa6_docx
+    # papaja::apa6_pdf:
+    #     keep_tex:  true
+    papaja::apa6_docx
 ---
 
 ```{r setup, include = FALSE}
@@ -91,6 +91,7 @@ library(modelr)
 # Seed for random number generation
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+                      # echo = TRUE)
 ```
 
 # Plot theme
@@ -271,7 +272,7 @@ point_estimates |>
   facet_wrap(~group4) +
   # scale_color_okabe_ito() +
   scale_color_viridis_d(direction = 1, option = "C", end = .80) +
-  labs(x = "Test", y = "Mean rating", color = "Group") +
+  labs(x = "Test", y = "Learning score", color = "Group") +
   theme_clean()
 ```
 
@@ -623,7 +624,7 @@ epred_ls_4_groups <- dd |>
   add_epred_draws(fit_ls_4_groups,
                   re_formula = ~ID,
                   ndraws = 500)
-```
+w```
 
 ```{r}
 epred_ls_4_groups |>
@@ -934,7 +935,7 @@ fit_3_groups_alt <- brm(formula,
 
 ### 4 Groups
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 priors |>
   parse_dist(prior) |>
   filter(class == "Intercept") |>
@@ -1025,13 +1026,13 @@ fit_4_groups_alt <- brm(formula,
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 fit_4_groups |>
   gather_draws(`b_Intercept.*`, regex = TRUE) |>
   ggplot(aes(x = .value, y = .variable)) +
   stat_halfeye()
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 fit_4_groups |>
   gather_draws(`b_disc.*`, regex = TRUE) |>
   ggplot(aes(x = .value, y = .variable)) +
@@ -1258,6 +1259,32 @@ sdtdata_4_agg_within |>
     title.position = "top"
   ))
 ```
+
+# Contrasts
+
+```{r}
+contrasts_ordinal <- fit_4_groups |> 
+  emmeans::emmeans(~group4 | test + oldnew) |> 
+  emmeans::contrast("pairwise") |> 
+  gather_emmeans_draws() |> 
+  mutate(indicator = if_else(contrast == "relpitch - abspitch", 1, 0))
+```
+
+
+
+```{r}
+zero_color <- ggokabeito::palette_okabe_ito()[1]
+
+contrasts_ordinal |> 
+  ggplot(aes(y = contrast, x = .value, fill = as_factor(indicator))) +
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
+  geom_eye() +
+  scale_fill_okabe_ito(guide="none") +
+  # stat_summary(aes(group = NA), fun.y = mean, geom = "line") +
+  facet_grid(oldnew ~ test) +
+  theme_clean()
+```
+
 
 # Posterior expectations
 
